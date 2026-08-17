@@ -20,7 +20,7 @@ export default async function SimDetailPage({
 }) {
   const { id } = await params;
   const { profile } = await getCurrentProfile();
-  const puedeEditar = tieneModulo(profile, "nueva");
+  const puedeEditar = tieneModulo(profile, "inventario");
   const supabase = await createClient();
 
   const [{ data: simCard }, { data: current }, { data: statusRows }, { data: shortRows }, { data: assignRows }, { data: profileRows }, { data: apnRows }, { data: clienteRows }] =
@@ -30,7 +30,7 @@ export default async function SimDetailPage({
       supabase.from("sim_status_history").select("*").eq("sim_id", id).order("changed_at", { ascending: false }),
       supabase.from("sim_short_numbers").select("*").eq("sim_id", id).order("assigned_at", { ascending: false }),
       supabase.from("sim_assignments").select("*").eq("sim_id", id).order("assigned_at", { ascending: false }),
-      supabase.from("profiles_view").select("*").eq("active", true).order("full_name"),
+      supabase.from("profiles_view").select("*").eq("organization_id", profile.organization_id).eq("active", true).order("full_name"),
       supabase.from("apns").select("id, name").eq("active", true).order("name"),
       supabase.from("clientes").select("id, nombre").eq("active", true).order("nombre"),
     ]);
@@ -83,7 +83,7 @@ export default async function SimDetailPage({
 
   eventos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
-  const comerciales = profiles.filter((p) => tieneModulo(p, "nueva"));
+  const comerciales = profiles.filter((p) => tieneModulo(p, "inventario"));
   const brokers = profiles; // "Broker asociado" es informal/opcional: cualquier usuario activo
 
   return (
