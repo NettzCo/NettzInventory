@@ -82,14 +82,14 @@ export default async function BusquedaRapidaPage({
                 className="rounded-lg border px-4 py-2 text-sm font-medium bg-white"
                 style={{ borderColor: "var(--border)" }}
               >
-                ⬇ Descargar (simple)
+                {"\u2B07"} Descargar (simple)
               </a>
               
                 href={`/dashboard/buscar/exportar?tipo=completa&q=${encodeURIComponent(q ?? "")}`}
                 className="rounded-lg border px-4 py-2 text-sm font-medium bg-white"
                 style={{ borderColor: "var(--border)" }}
               >
-                ⬇ Descargar (completa, con hoja de vida)
+                {"\u2B07"} Descargar (completa, con hoja de vida)
               </a>
             </div>
           )}
