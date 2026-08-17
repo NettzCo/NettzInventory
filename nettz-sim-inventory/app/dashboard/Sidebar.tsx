@@ -7,10 +7,8 @@ import { tieneModulo, ModuloKey } from "@/lib/modules";
 import { logout } from "./actions";
 
 const NAV_ITEMS: { key: ModuloKey; href: string; label: string; icon: () => React.ReactElement }[] = [
-  { key: "inventario", href: "/dashboard", label: "Inventario", icon: InventoryIcon },
-  { key: "buscar", href: "/dashboard/buscar", label: "Búsqueda rápida", icon: SearchIcon },
+  { key: "inventario", href: "/dashboard/inventario", label: "Inventario", icon: InventoryIcon },
   { key: "alertas", href: "/dashboard/alertas", label: "Alertas", icon: AlertIcon },
-  { key: "nueva", href: "/dashboard/nueva", label: "Registrar entrega", icon: PlusIcon },
   { key: "clientes", href: "/dashboard/clientes", label: "Clientes", icon: ClientesIcon },
   { key: "chat", href: "/dashboard/chat", label: "Chat", icon: ChatIcon },
 ];
@@ -36,7 +34,10 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
 
-  const items = NAV_ITEMS.filter((item) => tieneModulo({ role_es_sistema: esSuperAdmin, modulos }, item.key));
+  const items = [
+    { key: "inicio" as ModuloKey, href: "/dashboard", label: "Inicio", icon: HomeIcon },
+    ...NAV_ITEMS.filter((item) => tieneModulo({ role_es_sistema: esSuperAdmin, modulos }, item.key)),
+  ];
   if (esSuperAdmin) {
     items.push({ key: "configuracion" as ModuloKey, href: "/dashboard/configuracion", label: "Configuración", icon: SettingsIcon });
   }
@@ -111,6 +112,14 @@ export default function Sidebar({
   );
 }
 
+function HomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M2.5 8.5 9 3l6.5 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 7.5V14a1 1 0 0 0 1 1h2.5v-3.5h3V15H14a1 1 0 0 0 1-1V7.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function InventoryIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
