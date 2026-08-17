@@ -7,7 +7,7 @@ import { crearRol, actualizarRol, eliminarRol } from "./actions";
 
 export default function RolesManager({ roles }: { roles: RoleRow[] }) {
   const [nombre, setNombre] = useState("");
-  const [modulos, setModulos] = useState<ModuloKey[]>(["inventario", "buscar", "alertas"]);
+  const [modulos, setModulos] = useState<ModuloKey[]>(["inventario", "alertas"]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -21,7 +21,7 @@ export default function RolesManager({ roles }: { roles: RoleRow[] }) {
     startTransition(async () => {
       const res = await crearRol({ name: nombre, default_modulos: modulos });
       if (res?.error) setError(res.error);
-      else { setNombre(""); setModulos(["inventario", "buscar", "alertas"]); }
+      else { setNombre(""); setModulos(["inventario", "alertas"]); }
     });
   }
 
