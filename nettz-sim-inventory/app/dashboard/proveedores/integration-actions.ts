@@ -163,6 +163,6 @@ export async function sincronizarProveedor(providerId: string) {
   }).eq("id", providerId);
 
   revalidatePath("/dashboard/configuracion");
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard"); revalidatePath("/dashboard/inventario");
   return { ok: true, message };
 }
