@@ -8,6 +8,10 @@ export const ESTADO_COLOR: Record<EstadoSim, string> = {
   Desactivada: "var(--state-desactivada)",
 };
 
+export function formatCodigoCliente(codigo: number): string {
+  return `C-${String(codigo).padStart(5, "0")}`;
+}
+
 export function formatFecha(iso: string | null | undefined) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -43,4 +47,3 @@ export function formatPlan(cantidad: number | null | undefined, unidad: string |
   if (cantidad === null || cantidad === undefined || !unidad) return "—";
   return `${cantidad} ${unidad}`;
 }
-
