@@ -14,7 +14,7 @@
  * Nada más en el código hace referencia a "Nettz" directamente.
  */
 export const BRAND = {
-  name: "Nettz",
+  name: "Nettz Aion",
   tagline: "Inventario de SIM cards",
   logoFull: "/brand/logo-full-white.png", // logo completo, para fondos oscuros (sidebar, login)
   logoFullColor: "/brand/logo-full-color.png", // versión a color, para fondos claros
