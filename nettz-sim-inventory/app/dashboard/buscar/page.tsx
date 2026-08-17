@@ -3,6 +3,7 @@ import { SimCurrentView } from "@/lib/types";
 import Link from "next/link";
 import StatusPill from "@/components/StatusPill";
 import { formatFecha } from "@/lib/ui";
+import InventarioTabs from "../InventarioTabs";
 
 function parseTerminos(q: string): string[] {
   return q
@@ -42,6 +43,7 @@ export default async function BusquedaRapidaPage({
 
   return (
     <main className="p-8">
+      <InventarioTabs activo="buscar" />
       <h1 className="font-display text-2xl font-semibold mb-1">Búsqueda rápida</h1>
       <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
         Pega uno o varios ICC o números cortos (separados por espacio, coma o salto de línea).
@@ -75,14 +77,14 @@ export default async function BusquedaRapidaPage({
 
           {resultados.length > 0 && (
             <div className="flex gap-3 mb-4">
-              <a
+              
                 href={`/dashboard/buscar/exportar?tipo=simple&q=${encodeURIComponent(q ?? "")}`}
                 className="rounded-lg border px-4 py-2 text-sm font-medium bg-white"
                 style={{ borderColor: "var(--border)" }}
               >
                 ⬇ Descargar (simple)
               </a>
-              <a
+              
                 href={`/dashboard/buscar/exportar?tipo=completa&q=${encodeURIComponent(q ?? "")}`}
                 className="rounded-lg border px-4 py-2 text-sm font-medium bg-white"
                 style={{ borderColor: "var(--border)" }}
