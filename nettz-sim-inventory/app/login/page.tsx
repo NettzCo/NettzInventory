@@ -24,3 +24,39 @@ export default function LoginPage() {
           <h1 className="font-display text-3xl font-semibold leading-tight mb-3">
             {BRAND.tagline}
           </h1>
+          <p className="text-sm leading-relaxed max-w-sm" style={{ opacity: 0.85 }}>
+            Cada SIM tiene su hoja de vida: estado, número corto y cliente
+            asignado, con historial completo y trazabilidad por usuario.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="text-xs" style={{ opacity: 0.7 }}>
+            {BRAND.footer}
+          </p>
+          <p className="text-xs" style={{ opacity: 0.55 }}>
+            {BRAND.productName} · v{BRAND.productVersion} · Creado por {BRAND.creator}, {BRAND.location}
+          </p>
+        </div>
+      </div>
+
+      {/* Panel derecho: formulario */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 md:hidden flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={BRAND.mark} alt="" style={{ width: "28px", height: "28px" }} />
+            <span className="font-display text-lg font-semibold tracking-wide uppercase">{BRAND.name}</span>
+          </div>
+
+          <h2 className="font-display text-xl font-semibold mb-1">Ingresar</h2>
+          <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+            Usa las credenciales que te asignó tu administrador.
+          </p>
+
+          <LoginForm />
+        </div>
+      </div>
+    </main>
+  );
+}
