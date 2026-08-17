@@ -1,4 +1,3 @@
-import Image from "next/image";
 import LoginForm from "./LoginForm";
 import { BRAND } from "@/lib/branding";
 
@@ -10,7 +9,11 @@ export default function LoginPage() {
         className="hidden md:flex md:w-[42%] flex-col justify-between p-12 text-white relative overflow-hidden"
         style={{ background: "var(--ink-900)" }}
       >
-        <Image src={BRAND.logoFull} alt={BRAND.name} width={160} height={50} style={{ width: "auto", height: "34px" }} priority />
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={BRAND.mark} alt="" style={{ width: "36px", height: "36px" }} />
+          <span className="font-display text-xl font-semibold tracking-wide uppercase">{BRAND.name}</span>
+        </div>
 
         <div>
           {/* Motivo del chip de la SIM, como firma visual del producto */}
@@ -41,8 +44,10 @@ export default function LoginPage() {
       {/* Panel derecho: formulario */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <div className="mb-8 md:hidden">
-            <Image src={BRAND.logoFull} alt={BRAND.name} width={140} height={44} style={{ width: "auto", height: "26px" }} priority />
+          <div className="mb-8 md:hidden flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={BRAND.mark} alt="" style={{ width: "28px", height: "28px" }} />
+            <span className="font-display text-lg font-semibold tracking-wide uppercase">{BRAND.name}</span>
           </div>
 
           <h2 className="font-display text-xl font-semibold mb-1">Ingresar</h2>
