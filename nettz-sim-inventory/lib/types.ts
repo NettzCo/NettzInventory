@@ -59,13 +59,30 @@ export interface Profile {
   created_at: string;
 }
 
+export const INDUSTRIAS = [
+  "GPS",
+  "SEGURIDAD",
+  "INTEGRADOR",
+  "DISTRIBUIDOR",
+  "PAGOS E",
+  "UTILITIES",
+  "ENERGIA",
+  "OTRA INDUSTRIA",
+] as const;
+export type Industria = (typeof INDUSTRIAS)[number];
+
 export interface Cliente {
   id: string;
+  organization_id: string;
+  codigo: number;
   nombre: string;
+  contacto_responsable: string | null;
   documento: string | null;
   telefono: string | null;
   correo: string | null;
   direccion: string | null;
+  industria: Industria | null;
+  fecha_vinculacion: string | null;
   observaciones: string | null;
   active: boolean;
   created_at: string;
