@@ -40,7 +40,7 @@ export default function HojaDeVida({
 
   return (
     <main className="p-8 max-w-5xl">
-      <Link href="/dashboard" className="text-sm mb-4 inline-block" style={{ color: "var(--text-secondary)" }}>
+      <Link href="/dashboard/inventario" className="text-sm mb-4 inline-block" style={{ color: "var(--text-secondary)" }}>
         ← Volver al inventario
       </Link>
 
