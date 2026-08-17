@@ -7,7 +7,7 @@ import { tieneModulo } from "@/lib/modules";
 
 async function requireEditor() {
   const { userId, profile } = await getCurrentProfile();
-  if (!tieneModulo(profile, "nueva")) {
+  if (!tieneModulo(profile, "inventario")) {
     throw new Error("No tienes permiso para modificar SIM cards.");
   }
   return userId;
