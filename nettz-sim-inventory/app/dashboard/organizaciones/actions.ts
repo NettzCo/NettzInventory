@@ -38,9 +38,9 @@ export async function crearOrganizacion(input: {
     return { error: "La contraseña debe tener al menos 8 caracteres." };
   }
 
-  const supabase = await createClient();
+  const admin = createAdminClient();
 
-  const { data: org, error: orgError } = await supabase
+  const { data: org, error: orgError } = await admin
     .from("organizations")
     .insert({
       name: input.name.trim(),
@@ -57,16 +57,19 @@ export async function crearOrganizacion(input: {
 
   const orgId = org.id as string;
 
-  const { data: rolesCreados, error: rolesError } = await supabase
+  const { data: rolesCreados, error: rolesError } = await admin
     .from("roles")
     .insert(ROLES_BASE.map((r) => ({ organization_id: orgId, ...r })))
     .select("id, name");
 
-  if (rolesError) return { error: rolesError.message };
+  if (rolesError) {
+    // Deshacemos la organización huérfana para que el nombre quede libre y se pueda reintentar.
+    await admin.from("organizations").delete().eq("id", orgId);
+    return { error: rolesError.message };
+  }
 
   const superAdminRoleId = rolesCreados!.find((r) => r.name === "Super administrador")!.id;
 
-  const admin = createAdminClient();
   const { data: authUser, error: authError } = await admin.auth.admin.createUser({
     email: input.adminEmail.trim(),
     password: input.adminPassword,
@@ -74,7 +77,10 @@ export async function crearOrganizacion(input: {
     user_metadata: { full_name: input.adminFullName.trim() },
   });
 
-  if (authError) return { error: authError.message };
+  if (authError) {
+    await admin.from("organizations").delete().eq("id", orgId);
+    return { error: authError.message };
+  }
 
   await admin
     .from("profiles")
