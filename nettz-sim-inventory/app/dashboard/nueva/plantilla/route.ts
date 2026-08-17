@@ -1,20 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/currentProfile";
 import { ESTADOS_SIM, PLAN_UNIDADES, TIPOS_PLAN, PAGOS_MOMENTO } from "@/lib/types";
 import { tieneModulo } from "@/lib/modules";
 
 export async function GET() {
+  const { profile } = await getCurrentProfile();
   const supabase = await createClient();
 
   const [{ data: proveedores }, { data: apns }, { data: perfiles }] = await Promise.all([
     supabase.from("providers").select("name").eq("active", true).order("name"),
     supabase.from("apns").select("name").eq("active", true).order("name"),
-    supabase.from("profiles_view").select("full_name, modulos, role_es_sistema").eq("active", true).order("full_name"),
+    supabase.from("profiles_view").select("full_name, modulos, role_es_sistema").eq("organization_id", profile.organization_id).eq("active", true).order("full_name"),
   ]);
 
   const nombresProveedores = (proveedores ?? []).map((p) => p.name);
   const nombresApns = (apns ?? []).map((a) => a.name);
   const nombresComerciales = (perfiles ?? [])
-    .filter((p) => tieneModulo(p, "nueva"))
+    .filter((p) => tieneModulo(p, "inventario"))
     .map((p) => p.full_name);
   const nombresBrokers = (perfiles ?? []).map((p) => p.full_name); // "Broker" es informal: cualquier usuario activo
 
