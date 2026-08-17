@@ -19,6 +19,7 @@ export default function Sidebar({
   fullName,
   roleNombre,
   esSuperAdmin,
+  puedeGestionarOrganizaciones,
   modulos,
   alertCount,
   orgNombre,
@@ -27,6 +28,7 @@ export default function Sidebar({
   fullName: string;
   roleNombre: string;
   esSuperAdmin: boolean;
+  puedeGestionarOrganizaciones: boolean;
   modulos: string[];
   alertCount: number;
   orgNombre: string;
@@ -37,6 +39,8 @@ export default function Sidebar({
   const items = NAV_ITEMS.filter((item) => tieneModulo({ role_es_sistema: esSuperAdmin, modulos }, item.key));
   if (esSuperAdmin) {
     items.push({ key: "configuracion" as ModuloKey, href: "/dashboard/configuracion", label: "Configuración", icon: SettingsIcon });
+  }
+  if (puedeGestionarOrganizaciones) {
     items.push({ key: "organizaciones" as ModuloKey, href: "/dashboard/organizaciones", label: "Organizaciones", icon: OrgIcon });
   }
 
