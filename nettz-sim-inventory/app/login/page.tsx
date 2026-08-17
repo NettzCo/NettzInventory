@@ -14,7 +14,7 @@ export default function LoginPage() {
 
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={BRAND.logoFull} alt={BRAND.name} style={{ height: "40px", width: "auto" }} />
+          <img src={BRAND.logoFull} alt={BRAND.name} style={{ height: "56px", width: "auto" }} />
         </div>
 
         <div>
