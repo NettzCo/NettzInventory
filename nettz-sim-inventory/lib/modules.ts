@@ -7,10 +7,8 @@ import { Profile } from "./types";
  * ahí se gestionan usuarios, roles y credenciales.
  */
 export const MODULOS = [
-  { key: "inventario", label: "Inventario" },
-  { key: "buscar", label: "Búsqueda rápida" },
+  { key: "inventario", label: "Inventario" }, // incluye Búsqueda rápida y Registrar entrega
   { key: "alertas", label: "Alertas" },
-  { key: "nueva", label: "Registrar entrega" },
   { key: "clientes", label: "Clientes" },
   { key: "chat", label: "Chat" },
 ] as const;
