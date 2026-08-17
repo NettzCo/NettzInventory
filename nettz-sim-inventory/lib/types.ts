@@ -5,6 +5,7 @@ export interface RoleRow {
   id: string;
   name: string;
   is_system: boolean;
+  can_manage_organizations: boolean;
   default_modulos: string[];
   created_at: string;
 }
@@ -48,6 +49,7 @@ export interface Profile {
   role_id: string;
   role_nombre: string;
   role_es_sistema: boolean;
+  puede_gestionar_organizaciones: boolean;
   org_nombre: string;
   org_logo_url: string | null;
   org_color_ink: string;
