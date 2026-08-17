@@ -439,6 +439,6 @@ export async function confirmarCargaMasiva(filas: FilaParseada[]) {
     else { sinCambios++; resultados.push({ fila: f.fila, icc: f.icc, ok: true, accion: "sin_cambios" }); }
   }
 
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard"); revalidatePath("/dashboard/inventario");
   return { ok: true, creadas, actualizadas, sinCambios, resultados };
 }
