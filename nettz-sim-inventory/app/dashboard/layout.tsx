@@ -39,6 +39,7 @@ export default async function DashboardLayout({
         fullName={profile.full_name}
         roleNombre={profile.role_nombre}
         esSuperAdmin={profile.role_es_sistema}
+        puedeGestionarOrganizaciones={profile.puede_gestionar_organizaciones}
         modulos={profile.modulos}
         alertCount={alertCount}
         orgNombre={profile.org_nombre}
