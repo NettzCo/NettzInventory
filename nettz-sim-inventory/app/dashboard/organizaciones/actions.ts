@@ -1,0 +1,104 @@
+"use server";
+
+import { getCurrentProfile } from "@/lib/currentProfile";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+
+async function requireSuperAdmin() {
+  const { profile } = await getCurrentProfile();
+  if (!profile.role_es_sistema) {
+    throw new Error("Solo un super administrador puede administrar organizaciones.");
+  }
+  return profile;
+}
+
+const ROLES_BASE = [
+  { name: "Super administrador", is_system: true, default_modulos: ["inventario", "buscar", "alertas", "nueva", "clientes", "chat"] },
+  { name: "Comercial", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "nueva", "clientes", "chat"] },
+  { name: "Broker", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "chat"] },
+  { name: "Facturación", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "chat"] },
+];
+
+export async function crearOrganizacion(input: {
+  name: string;
+  colorInk: string;
+  colorAccent: string;
+  logoUrl: string;
+  adminFullName: string;
+  adminEmail: string;
+  adminPassword: string;
+}) {
+  await requireSuperAdmin();
+
+  if (!input.name.trim() || !input.adminFullName.trim() || !input.adminEmail.trim() || !input.adminPassword) {
+    return { error: "Todos los campos son obligatorios (nombre de la organización y el primer administrador)." };
+  }
+  if (input.adminPassword.length < 8) {
+    return { error: "La contraseña debe tener al menos 8 caracteres." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: org, error: orgError } = await supabase
+    .from("organizations")
+    .insert({
+      name: input.name.trim(),
+      logo_url: input.logoUrl || null,
+      color_ink: input.colorInk,
+      color_accent: input.colorAccent,
+    })
+    .select("id")
+    .single();
+
+  if (orgError) {
+    return { error: orgError.code === "23505" ? "Ya existe una organización con ese nombre." : orgError.message };
+  }
+
+  const orgId = org.id as string;
+
+  const { data: rolesCreados, error: rolesError } = await supabase
+    .from("roles")
+    .insert(ROLES_BASE.map((r) => ({ organization_id: orgId, ...r })))
+    .select("id, name");
+
+  if (rolesError) return { error: rolesError.message };
+
+  const superAdminRoleId = rolesCreados!.find((r) => r.name === "Super administrador")!.id;
+
+  const admin = createAdminClient();
+  const { data: authUser, error: authError } = await admin.auth.admin.createUser({
+    email: input.adminEmail.trim(),
+    password: input.adminPassword,
+    email_confirm: true,
+    user_metadata: { full_name: input.adminFullName.trim() },
+  });
+
+  if (authError) return { error: authError.message };
+
+  await admin
+    .from("profiles")
+    .update({
+      full_name: input.adminFullName.trim(),
+      organization_id: orgId,
+      role_id: superAdminRoleId,
+      modulos: ROLES_BASE[0].default_modulos,
+    })
+    .eq("id", authUser.user!.id);
+
+  revalidatePath("/dashboard/organizaciones");
+  return { ok: true };
+}
+
+export async function actualizarOrganizacion(id: string, patch: { name?: string; color_ink?: string; color_accent?: string; logo_url?: string }) {
+  await requireSuperAdmin();
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("organizations").update(patch).eq("id", id);
+  if (error) {
+    return { error: error.code === "23505" ? "Ya existe una organización con ese nombre." : error.message };
+  }
+
+  revalidatePath("/dashboard/organizaciones");
+  return { ok: true };
+}
