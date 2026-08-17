@@ -7,8 +7,8 @@ import { revalidatePath } from "next/cache";
 
 async function requireSuperAdmin() {
   const { profile } = await getCurrentProfile();
-  if (!profile.role_es_sistema) {
-    throw new Error("Solo un super administrador puede administrar organizaciones.");
+  if (!profile.puede_gestionar_organizaciones) {
+    throw new Error("Solo el super administrador de Nettz puede administrar organizaciones.");
   }
   return profile;
 }
