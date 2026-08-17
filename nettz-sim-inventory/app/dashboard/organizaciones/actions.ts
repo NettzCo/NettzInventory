@@ -14,10 +14,10 @@ async function requireSuperAdmin() {
 }
 
 const ROLES_BASE = [
-  { name: "Super administrador", is_system: true, default_modulos: ["inventario", "buscar", "alertas", "nueva", "clientes", "chat"] },
-  { name: "Comercial", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "nueva", "clientes", "chat"] },
-  { name: "Broker", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "chat"] },
-  { name: "Facturación", is_system: false, default_modulos: ["inventario", "buscar", "alertas", "chat"] },
+  { name: "Super administrador", is_system: true, default_modulos: ["inventario", "alertas", "clientes", "chat"] },
+  { name: "Comercial", is_system: false, default_modulos: ["inventario", "alertas", "clientes", "chat"] },
+  { name: "Broker", is_system: false, default_modulos: ["inventario", "alertas", "chat"] },
+  { name: "Facturación", is_system: false, default_modulos: ["inventario", "alertas", "chat"] },
 ];
 
 export async function crearOrganizacion(input: {
