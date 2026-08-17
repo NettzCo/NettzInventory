@@ -6,7 +6,7 @@ import OrganizacionesManager from "./OrganizacionesManager";
 
 export default async function OrganizacionesPage() {
   const { profile } = await getCurrentProfile();
-  if (!profile.role_es_sistema) redirect("/dashboard");
+  if (!profile.puede_gestionar_organizaciones) redirect("/dashboard");
 
   const supabase = await createClient();
   const { data: organizaciones } = await supabase.from("organizations").select("*").order("created_at");
