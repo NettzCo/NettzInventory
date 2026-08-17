@@ -54,7 +54,7 @@ export default function Sidebar({
         <img
           src={orgLogoUrl || BRAND.logoFull}
           alt={orgNombre}
-          style={{ width: "auto", height: "28px", maxWidth: "160px" }}
+          style={{ width: "auto", height: "44px", maxWidth: "200px" }}
         />
       </div>
 
