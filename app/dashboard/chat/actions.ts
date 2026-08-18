@@ -26,5 +26,21 @@ export async function enviarMensaje(recipientId: string | null, body: string) {
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard/chat");
+  revalidatePath("/dashboard/alertas");
+  return { ok: true };
+}
+
+// "general" para el canal general, o el id del otro usuario para un directo.
+export async function marcarChatLeido(conversation: string) {
+  const { userId } = await getCurrentProfile();
+  const supabase = await createClient();
+
+  await supabase.from("chat_reads").upsert({
+    user_id: userId,
+    conversation,
+    last_read_at: new Date().toISOString(),
+  });
+
+  revalidatePath("/dashboard/alertas");
   return { ok: true };
 }
