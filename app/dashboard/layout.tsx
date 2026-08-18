@@ -48,6 +48,8 @@ export default async function DashboardLayout({
         alertCount={alertCount}
         orgNombre={profile.org_nombre}
         orgLogoUrl={profile.org_logo_url}
+        organizationId={profile.organization_id}
+        currentUserId={userId}
       />
       <div className="flex-1 min-w-0">{children}</div>
     </div>
