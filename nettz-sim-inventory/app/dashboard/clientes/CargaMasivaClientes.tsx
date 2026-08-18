@@ -68,7 +68,7 @@ export default function CargaMasivaClientes() {
       <div className="flex items-center justify-between mb-1">
         <h2 className="font-display text-base font-semibold">Carga masiva de clientes</h2>
         <a href="/dashboard/clientes/plantilla" className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-          ⬇ Descargar plantilla
+          {"\u2B07"} Descargar plantilla
         </a>
       </div>
       <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
