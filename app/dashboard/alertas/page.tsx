@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/currentProfile";
 import { SimCurrentView, ESTADOS_SIM, EstadoSim } from "@/lib/types";
 import { calcularAlertas, DIAS_ALERTA_DEFAULT, ESTADOS_ALERTA_DEFAULT } from "@/lib/alerts";
+import { construirAlertasChat } from "@/lib/chatAlerts";
 import { formatFecha, formatMoneda } from "@/lib/ui";
 import Link from "next/link";
 
@@ -35,10 +37,12 @@ export default async function AlertasPage({
   const umbral = dias ? Number(dias) : DIAS_ALERTA_DEFAULT;
   const estadosSeleccionados = (aArray(estados) as EstadoSim[]).length > 0 ? (aArray(estados) as EstadoSim[]) : ESTADOS_ALERTA_DEFAULT;
 
+  const { userId, profile } = await getCurrentProfile();
   const supabase = await createClient();
-  const [{ data: sims }, ultimaActivacionPorSim] = await Promise.all([
+  const [{ data: sims }, ultimaActivacionPorSim, alertasChat] = await Promise.all([
     supabase.from("sim_current_view").select("*"),
     construirUltimaActivacion(supabase),
+    construirAlertasChat(supabase, userId, profile.organization_id),
   ]);
 
   const { data: proveedoresRows } = await supabase.from("sim_cards").select("proveedor").order("proveedor");
@@ -59,6 +63,51 @@ export default async function AlertasPage({
 
   return (
     <main className="p-8">
+      {alertasChat.length > 0 && (
+        <div className="mb-8">
+          <h2 className="font-display text-lg font-semibold mb-1">Mensajes sin leer</h2>
+          <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>
+            Chat del canal general o directos que todavía no has abierto.
+          </p>
+          <div className="rounded-xl border overflow-hidden bg-white" style={{ borderColor: "var(--border)" }}>
+            {alertasChat.map((a) => (
+              <Link
+                key={a.conversacion}
+                href={`/dashboard/chat?con=${a.conversacion}`}
+                className="flex items-center justify-between px-4 py-3 border-b last:border-0 hover:bg-[var(--bg)] transition"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: a.esGeneral ? "var(--chip-gold)" : "var(--state-lista)" }}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {a.esGeneral ? "Canal general" : `Mensaje directo de ${a.nombreOtro}`}
+                    </p>
+                    <p className="text-sm truncate" style={{ color: "var(--text-secondary)", maxWidth: "36rem" }}>
+                      {a.ultimoMensaje}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {new Date(a.ultimaFecha).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span
+                    className="text-xs font-semibold rounded-full px-2 py-0.5"
+                    style={{ background: "var(--chip-gold)", color: "var(--ink-950)" }}
+                  >
+                    {a.cantidad}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-2">
         <div>
           <h1 className="font-display text-2xl font-semibold">Alertas de vencimiento</h1>
