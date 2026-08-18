@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/branding";
 import { tieneModulo, ModuloKey } from "@/lib/modules";
+import { createClient } from "@/lib/supabase/client";
+import { obtenerConteoAlertas } from "./alertas/liveActions";
 import { logout } from "./actions";
 
 const NAV_ITEMS: { key: ModuloKey; href: string; label: string; icon: () => React.ReactElement }[] = [
@@ -19,9 +22,11 @@ export default function Sidebar({
   esSuperAdmin,
   puedeGestionarOrganizaciones,
   modulos,
-  alertCount,
+  alertCount: alertCountInicial,
   orgNombre,
   orgLogoUrl,
+  organizationId,
+  currentUserId,
 }: {
   fullName: string;
   roleNombre: string;
@@ -31,8 +36,40 @@ export default function Sidebar({
   alertCount: number;
   orgNombre: string;
   orgLogoUrl: string | null;
+  organizationId: string;
+  currentUserId: string;
 }) {
   const pathname = usePathname();
+  const [alertCount, setAlertCount] = useState(alertCountInicial);
+
+  // Escucha en tiempo real: cualquier mensaje de chat nuevo en la organización,
+  // o cualquier cambio en "hasta dónde leíste" (propio, puede venir de otra
+  // pestaña o del mismo chat), recalcula la campanita al instante — sin
+  // necesidad de recargar la página ni cambiar de módulo.
+  useEffect(() => {
+    const supabase = createClient();
+
+    async function refrescar() {
+      const nuevo = await obtenerConteoAlertas();
+      setAlertCount(nuevo);
+    }
+
+    const canal = supabase
+      .channel(`alertas-badge-${organizationId}-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages", filter: `organization_id=eq.${organizationId}` },
+        () => { void refrescar(); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_reads", filter: `user_id=eq.${currentUserId}` },
+        () => { void refrescar(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(canal); };
+  }, [organizationId, currentUserId]);
 
   const items = [
     { key: "inicio" as ModuloKey, href: "/dashboard", label: "Inicio", icon: HomeIcon },
