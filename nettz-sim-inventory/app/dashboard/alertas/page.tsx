@@ -71,7 +71,7 @@ export default async function AlertasPage({
           className="rounded-lg border px-4 py-2.5 text-sm font-medium bg-white flex items-center"
           style={{ borderColor: "var(--border)" }}
         >
-          ⬇ Descargar listado
+          {"\u2B07"} Descargar listado
         </a>
       </div>
 
