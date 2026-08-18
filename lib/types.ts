@@ -189,7 +189,7 @@ export interface HojaDeVidaEvento {
   usuario_nombre: string;
 }
 
-export type EstadoPedido = "Pendiente" | "Enviado";
+export type EstadoPedido = "Pendiente" | "Enviado" | "Rechazado";
 
 export interface Pedido {
   id: string;
@@ -209,6 +209,10 @@ export interface Pedido {
   estado: EstadoPedido;
   observaciones: string | null;
   comprobante_url: string | null;
+  visto_at: string | null;
+  motivo_rechazo: string | null;
+  rechazado_at: string | null;
+  rechazado_by: string | null;
   created_at: string;
   created_by: string;
   enviado_at: string | null;

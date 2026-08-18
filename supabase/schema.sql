@@ -389,12 +389,23 @@ create table if not exists chat_reads (
   user_id uuid not null references profiles(id) on delete cascade,
   conversation text not null,
   last_read_at timestamptz not null default now(),
+  organization_id uuid references organizations(id) on delete cascade,
   primary key (user_id, conversation)
 );
 alter table chat_reads enable row level security;
-create policy "own chat reads" on chat_reads for all
-  using (user_id = auth.uid())
+
+-- Cada persona solo puede escribir su propia marca de "hasta dónde leí".
+drop policy if exists "own chat reads" on chat_reads;
+create policy "write own chat reads" on chat_reads for insert
   with check (user_id = auth.uid());
+create policy "update own chat reads" on chat_reads for update
+  using (user_id = auth.uid());
+
+-- Pero cualquiera de la misma organización puede LEER esas marcas — así el
+-- remitente puede saber si ya le leyeron el mensaje (el doble check), sin
+-- que eso permita modificar la marca de otra persona.
+create policy "read org chat reads" on chat_reads for select
+  using (organization_id = current_org_id());
 
 -- Habilita las actualizaciones en tiempo real del chat (para que los
 -- mensajes nuevos aparezcan sin recargar la página)
@@ -699,9 +710,13 @@ create table if not exists pedidos (
   contacto_telefono text not null,
   contacto_correo text,
   asignado_a uuid not null references profiles(id),
-  estado text not null default 'Pendiente' check (estado in ('Pendiente', 'Enviado')),
+  estado text not null default 'Pendiente' check (estado in ('Pendiente', 'Enviado', 'Rechazado')),
   observaciones text,
   comprobante_url text,
+  visto_at timestamptz, -- cuándo la persona asignada abrió el pedido por primera vez
+  motivo_rechazo text,
+  rechazado_at timestamptz,
+  rechazado_by uuid references profiles(id),
   created_at timestamptz not null default now(),
   created_by uuid not null references profiles(id),
   enviado_at timestamptz,
