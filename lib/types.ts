@@ -208,6 +208,7 @@ export interface Pedido {
   asignado_a: string;
   estado: EstadoPedido;
   observaciones: string | null;
+  comprobante_url: string | null;
   created_at: string;
   created_by: string;
   enviado_at: string | null;

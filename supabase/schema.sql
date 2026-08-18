@@ -701,6 +701,7 @@ create table if not exists pedidos (
   asignado_a uuid not null references profiles(id),
   estado text not null default 'Pendiente' check (estado in ('Pendiente', 'Enviado')),
   observaciones text,
+  comprobante_url text,
   created_at timestamptz not null default now(),
   created_by uuid not null references profiles(id),
   enviado_at timestamptz,
@@ -722,6 +723,11 @@ create policy "update pedidos" on pedidos for update
   using (organization_id = current_org_id() and tiene_modulo('pedidos'))
   with check (organization_id = current_org_id() and tiene_modulo('pedidos'));
 
+-- Solo quien creó el pedido puede eliminarlo (verificación fina adicional
+-- también en el código del servidor, por si se necesita ajustar después)
+create policy "delete pedidos" on pedidos for delete
+  using (organization_id = current_org_id() and created_by = auth.uid());
+
 do $$
 begin
   if not exists (
@@ -731,6 +737,28 @@ begin
     alter publication supabase_realtime add table pedidos;
   end if;
 end $$;
+
+-- Bucket de almacenamiento para el comprobante de envío (imagen o PDF)
+insert into storage.buckets (id, name, public)
+values ('pedidos-comprobantes', 'pedidos-comprobantes', true)
+on conflict (id) do nothing;
+
+create policy "read comprobantes" on storage.objects for select
+  using (bucket_id = 'pedidos-comprobantes');
+
+create policy "upload comprobantes" on storage.objects for insert
+  with check (
+    bucket_id = 'pedidos-comprobantes'
+    and tiene_modulo('pedidos')
+    and (storage.foldername(name))[1] = current_org_id()::text
+  );
+
+create policy "update comprobantes" on storage.objects for update
+  using (
+    bucket_id = 'pedidos-comprobantes'
+    and tiene_modulo('pedidos')
+    and (storage.foldername(name))[1] = current_org_id()::text
+  );
 
 -- Semilla inicial de proveedores de Nettz (puedes agregar/eliminar desde el panel)
 insert into providers (organization_id, name)
