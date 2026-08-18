@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChatMessage } from "@/lib/types";
-import { enviarMensaje } from "./actions";
+import { enviarMensaje, marcarChatLeido } from "./actions";
 
 interface Contacto {
   id: string;
@@ -14,12 +14,14 @@ export default function ChatWindow({
   currentUserId,
   organizationId,
   contactos,
+  conversacionInicial = null,
 }: {
   currentUserId: string;
   organizationId: string;
   contactos: Contacto[];
+  conversacionInicial?: string | null;
 }) {
-  const [seleccion, setSeleccion] = useState<string | null>(null); // null = canal general
+  const [seleccion, setSeleccion] = useState<string | null>(conversacionInicial); // null = canal general
   const [mensajes, setMensajes] = useState<ChatMessage[]>([]);
   const [texto, setTexto] = useState("");
   const [cargando, setCargando] = useState(true);
@@ -88,6 +90,12 @@ export default function ChatWindow({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes]);
+
+  // Marca como leída la conversación abierta — tanto al entrar como cada
+  // vez que llega un mensaje nuevo mientras la tienes abierta en pantalla.
+  useEffect(() => {
+    void marcarChatLeido(seleccion ?? "general");
+  }, [seleccion, mensajes.length]);
 
   const mensajesVisibles = mensajes.filter(esRelevante);
 
