@@ -219,11 +219,23 @@ export interface Pedido {
   enviado_by: string | null;
 }
 
+export interface ChatGroup {
+  id: string;
+  organization_id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+}
+
 export interface ChatMessage {
   id: string;
   organization_id: string;
   sender_id: string;
-  recipient_id: string | null; // null = canal general
+  recipient_id: string | null; // null = canal general (o grupo, ver group_id)
+  group_id: string | null;
   body: string;
+  attachment_url: string | null;
+  attachment_name: string | null;
+  attachment_type: "image" | "file" | null;
   created_at: string;
 }

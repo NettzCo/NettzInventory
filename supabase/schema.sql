@@ -372,13 +372,65 @@ create table if not exists chat_messages (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   sender_id uuid not null references profiles(id),
-  recipient_id uuid references profiles(id),  -- null = mensaje al canal general
+  recipient_id uuid references profiles(id),  -- null = mensaje al canal general (o a un grupo, ver group_id)
+  group_id uuid,  -- referencia a chat_groups; se agrega la FK más abajo, tras crear esa tabla
   body text not null,
+  attachment_url text,
+  attachment_name text,
+  attachment_type text, -- 'image' | 'file'
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_chat_org_created on chat_messages (organization_id, created_at);
 create index if not exists idx_chat_dm on chat_messages (sender_id, recipient_id);
+create index if not exists idx_chat_group on chat_messages (group_id);
+
+-- ---------------------------------------------------------
+-- GRUPOS de chat — solo el super administrador los crea, nombra, edita
+-- (incluyendo a quién pertenece) y elimina. Los miembros sí pueden
+-- escribir y leer dentro del grupo al que pertenecen.
+-- ---------------------------------------------------------
+create table if not exists chat_groups (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  name text not null,
+  created_by uuid not null references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists chat_group_members (
+  group_id uuid not null references chat_groups(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  primary key (group_id, user_id)
+);
+
+alter table chat_messages add constraint chat_messages_group_id_fkey
+  foreign key (group_id) references chat_groups(id) on delete cascade;
+
+alter table chat_groups enable row level security;
+alter table chat_group_members enable row level security;
+
+create policy "read groups same org" on chat_groups for select
+  using (organization_id = current_org_id());
+create policy "manage groups super admin" on chat_groups for all
+  using (organization_id = current_org_id() and current_role_is_system())
+  with check (organization_id = current_org_id() and current_role_is_system());
+
+create policy "read group members" on chat_group_members for select
+  using (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id()));
+create policy "manage group members super admin" on chat_group_members for all
+  using (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and current_role_is_system()))
+  with check (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and current_role_is_system()));
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='chat_groups') then
+    alter publication supabase_realtime add table chat_groups;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='chat_group_members') then
+    alter publication supabase_realtime add table chat_group_members;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------
 -- Marca de "hasta cuándo leíste" cada conversación del chat — para saber
@@ -634,18 +686,47 @@ create policy "super_admin write sync_logs" on sync_logs for insert
 
 -- Chat: permanente, nunca se borra ni se edita (no hay política de update
 -- ni de delete — por diseño). Se puede leer el canal general de la
--- organización, o los mensajes directos donde uno es emisor o receptor.
+-- organización, los mensajes directos donde uno es emisor o receptor, o
+-- los mensajes de un grupo del que uno es miembro (o si es super admin).
 create policy "read chat same org" on chat_messages for select
   using (
     organization_id = current_org_id()
-    and (recipient_id is null or recipient_id = auth.uid() or sender_id = auth.uid())
+    and (
+      (group_id is null and (recipient_id is null or recipient_id = auth.uid() or sender_id = auth.uid()))
+      or (group_id is not null and (
+        current_role_is_system()
+        or exists (select 1 from chat_group_members m where m.group_id = chat_messages.group_id and m.user_id = auth.uid())
+      ))
+    )
   );
 create policy "send chat" on chat_messages for insert
   with check (
     organization_id = current_org_id()
     and sender_id = auth.uid()
     and tiene_modulo('chat')
+    and (
+      group_id is null
+      or current_role_is_system()
+      or exists (select 1 from chat_group_members m where m.group_id = chat_messages.group_id and m.user_id = auth.uid())
+    )
   );
+
+-- Blindaje adicional: ni siquiera con acceso administrativo se puede editar
+-- o eliminar un mensaje ya enviado — esto lo impide el propio motor de la
+-- base de datos, no solo los permisos de la aplicación.
+create or replace function bloquear_cambios_chat() returns trigger as $$
+begin
+  raise exception 'Los mensajes del chat son permanentes: no se pueden editar ni eliminar.';
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_bloquear_update_chat on chat_messages;
+create trigger trg_bloquear_update_chat before update on chat_messages
+  for each row execute function bloquear_cambios_chat();
+
+drop trigger if exists trg_bloquear_delete_chat on chat_messages;
+create trigger trg_bloquear_delete_chat before delete on chat_messages
+  for each row execute function bloquear_cambios_chat();
 
 -- SIM cards y su historial: se leen y administran dentro de la misma
 -- organización, por quien tenga el módulo "nueva" habilitado
@@ -772,6 +853,22 @@ create policy "update comprobantes" on storage.objects for update
   using (
     bucket_id = 'pedidos-comprobantes'
     and tiene_modulo('pedidos')
+    and (storage.foldername(name))[1] = current_org_id()::text
+  );
+
+-- Bucket de almacenamiento para los adjuntos del chat (cualquier archivo,
+-- arrastrado directamente sobre la conversación)
+insert into storage.buckets (id, name, public)
+values ('chat-adjuntos', 'chat-adjuntos', true)
+on conflict (id) do nothing;
+
+create policy "read chat adjuntos" on storage.objects for select
+  using (bucket_id = 'chat-adjuntos');
+
+create policy "upload chat adjuntos" on storage.objects for insert
+  with check (
+    bucket_id = 'chat-adjuntos'
+    and tiene_modulo('chat')
     and (storage.foldername(name))[1] = current_org_id()::text
   );
 
