@@ -247,14 +247,3 @@ function ClienteRow({ cliente }: { cliente: Cliente }) {
           className="status-pill"
           style={{ background: active ? "#E7F5EC" : "#EEF0F4", color: active ? "var(--state-activa)" : "var(--text-muted)" }}
         >
-          {active ? "Activo" : "Inactivo"}
-        </button>
-      </td>
-      <td className="px-6 py-3 text-right">
-        <button onClick={eliminar} disabled={isPending} className="text-sm" style={{ color: "var(--state-desactivada)" }}>
-          Eliminar
-        </button>
-      </td>
-    </tr>
-  );
-}
