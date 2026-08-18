@@ -1,6 +1,7 @@
 import { getCurrentProfile } from "@/lib/currentProfile";
 import { createClient } from "@/lib/supabase/server";
 import { contarAlertasActivas } from "@/lib/alerts";
+import { construirAlertasChat } from "@/lib/chatAlerts";
 import { SimCurrentView } from "@/lib/types";
 import { derivarPaleta } from "@/lib/colorUtils";
 import Sidebar from "./Sidebar";
@@ -10,11 +11,14 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile } = await getCurrentProfile();
+  const { userId, profile } = await getCurrentProfile();
 
   const supabase = await createClient();
-  const { data: sims } = await supabase.from("sim_current_view").select("*");
-  const alertCount = contarAlertasActivas((sims ?? []) as SimCurrentView[]);
+  const [{ data: sims }, alertasChat] = await Promise.all([
+    supabase.from("sim_current_view").select("*"),
+    construirAlertasChat(supabase, userId, profile.organization_id),
+  ]);
+  const alertCount = contarAlertasActivas((sims ?? []) as SimCurrentView[]) + alertasChat.length;
 
   // Cada organización tiene sus propios 2 colores (Configuración →
   // Organizaciones, solo visible para el dueño de la plataforma). Acá se
