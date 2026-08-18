@@ -393,3 +393,319 @@ export default function ChatWindow({
                   {m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : "")}
                 </div>
               </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={() => setSeleccion("general")}
+              className="w-full text-left px-4 py-3 text-sm border-b flex items-center gap-2"
+              style={{
+                borderColor: "var(--border)",
+                background: esGeneral ? "var(--bg)" : "transparent",
+                fontWeight: esGeneral ? 600 : 400,
+              }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--chip-gold)" }} />
+              Canal general
+            </button>
+
+            <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Grupos</span>
+              {esSuperAdmin && (
+                <button onClick={() => setGestionAbierta("nuevo")} className="text-xs font-medium hover:underline cursor-pointer" style={{ color: "var(--chip-gold)" }}>
+                  + Nuevo
+                </button>
+              )}
+            </div>
+            {grupos.length === 0 && (
+              <p className="px-4 py-2 text-xs" style={{ color: "var(--text-muted)" }}>Sin grupos todavía.</p>
+            )}
+            {grupos.map((g) => (
+              <div
+                key={g.id}
+                className="w-full flex items-center border-b"
+                style={{ borderColor: "var(--border)", background: seleccion === `${GRUPO_PREFIJO}${g.id}` ? "var(--bg)" : "transparent" }}
+              >
+                <button
+                  onClick={() => setSeleccion(`${GRUPO_PREFIJO}${g.id}`)}
+                  className="flex-1 text-left px-4 py-3 text-sm"
+                  style={{ fontWeight: seleccion === `${GRUPO_PREFIJO}${g.id}` ? 600 : 400 }}
+                >
+                  # {g.name}
+                </button>
+                {esSuperAdmin && (
+                  <button onClick={() => setGestionAbierta(g.id)} className="px-2 text-xs hover:underline cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                    Editar
+                  </button>
+                )}
+              </div>
+            ))}
+
+            <div className="px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                Directos{contactos.filter((c) => usuariosEnLinea.has(c.id)).length > 0 && ` · ${contactos.filter((c) => usuariosEnLinea.has(c.id)).length} en línea`}
+              </span>
+            </div>
+            {contactos.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSeleccion(c.id)}
+                className="w-full text-left px-4 py-3 text-sm border-b flex items-center gap-2"
+                style={{
+                  borderColor: "var(--border)",
+                  background: seleccion === c.id ? "var(--bg)" : "transparent",
+                  fontWeight: seleccion === c.id ? 600 : 400,
+                }}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: usuariosEnLinea.has(c.id) ? "#3BA55D" : "#D1D0C4",
+                    border: usuariosEnLinea.has(c.id) ? "none" : "1px solid #B8B6A6",
+                  }}
+                  title={usuariosEnLinea.has(c.id) ? "En línea" : "Desconectado"}
+                />
+                {c.full_name}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Conversación o panel de gestión de grupo */}
+      {gestionAbierta ? (
+        <GestionGrupo
+          grupoId={gestionAbierta === "nuevo" ? null : gestionAbierta}
+          nombreInicial={gestionAbierta === "nuevo" ? "" : nombreGrupoPorId.get(gestionAbierta) ?? ""}
+          miembrosIniciales={gestionAbierta === "nuevo" ? [] : miembrosPorGrupo[gestionAbierta] ?? []}
+          todosUsuarios={todosUsuarios}
+          currentUserId={currentUserId}
+          onCerrar={() => setGestionAbierta(null)}
+          onListo={(idGrupo) => { setGestionAbierta(null); setSeleccion(`${GRUPO_PREFIJO}${idGrupo}`); router.refresh(); }}
+          onEliminado={() => { setGestionAbierta(null); setSeleccion("general"); router.refresh(); }}
+        />
+      ) : (
+        <div
+          className="flex-1 flex flex-col min-w-0 relative"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {arrastrando && (
+            <div
+              className="absolute inset-0 z-20 flex items-center justify-center"
+              style={{ background: "rgba(36,35,7,0.85)", border: "2px dashed var(--chip-gold)" }}
+            >
+              <p className="text-white text-sm font-medium">Suelta aquí para adjuntar el archivo</p>
+            </div>
+          )}
+          <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+            <p className="font-medium text-sm">{tituloConversacion()}</p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {esGeneral
+                ? "Visible para todos en tu organización"
+                : esGrupo
+                ? "Visible para los miembros del grupo"
+                : usuariosEnLinea.has(seleccion)
+                ? <span style={{ color: "#3BA55D" }}>● En línea</span>
+                : "Mensaje directo"}
+              {" "}· el historial nunca se borra
+              {(esGeneral || esGrupo) && " · escribe @ para mencionar a alguien"}
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+            {cargando ? (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>Cargando…</p>
+            ) : mensajesVisibles.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>Todavía no hay mensajes aquí.</p>
+            ) : (
+              mensajesVisibles.map((m) => {
+                const propio = m.sender_id === currentUserId;
+                return (
+                  <div key={m.id} className={`flex flex-col ${propio ? "items-end" : "items-start"}`}>
+                    <div
+                      className="rounded-xl px-3.5 py-2 text-sm max-w-md"
+                      style={{
+                        background: propio ? "var(--ink-900)" : "var(--bg)",
+                        color: propio ? "white" : "var(--text-primary)",
+                      }}
+                    >
+                      {m.attachment_url && m.attachment_type === "image" && (
+                        <a href={m.attachment_url} target="_blank" rel="noreferrer" className="block">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- adjunto subido por el usuario, dominio externo (Supabase Storage) */}
+                          <img src={m.attachment_url} alt={m.attachment_name ?? "imagen adjunta"} style={{ maxWidth: "220px", maxHeight: "220px", borderRadius: "0.5rem", display: "block", marginBottom: m.body ? "0.4rem" : 0 }} />
+                        </a>
+                      )}
+                      {m.attachment_url && m.attachment_type === "file" && (
+                        <a href={m.attachment_url} target="_blank" rel="noreferrer" className="text-sm underline block" style={{ marginBottom: m.body ? "0.4rem" : 0 }}>📎 {m.attachment_name}</a>
+                      )}
+                      {m.body && renderBody(m.body)}
+                    </div>
+                    <span className="text-xs mt-1 flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                      {nombreDe(m.sender_id)} · {new Date(m.created_at).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      {propio && esDirecto && (
+                        <span
+                          title={otroLeidoHasta && new Date(otroLeidoHasta) >= new Date(m.created_at) ? "Leído" : "Enviado"}
+                          style={{ color: otroLeidoHasta && new Date(otroLeidoHasta) >= new Date(m.created_at) ? "var(--chip-gold)" : "var(--text-muted)" }}
+                        >
+                          {otroLeidoHasta && new Date(otroLeidoHasta) >= new Date(m.created_at) ? "✓✓" : "✓"}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-4 border-t flex gap-3 relative" style={{ borderColor: "var(--border)" }}>
+            {(subiendoAdjunto || errorAdjunto) && (
+              <div
+                className="absolute rounded-lg border bg-white px-3 py-2 text-xs shadow-lg"
+                style={{ borderColor: "var(--border)", bottom: "calc(100% + 4px)", left: "1rem", color: errorAdjunto ? "var(--state-desactivada)" : "var(--text-secondary)" }}
+              >
+                {subiendoAdjunto ? "Subiendo archivo…" : errorAdjunto}
+              </div>
+            )}
+            {sugerencias.length > 0 && (
+              <div
+                className="absolute rounded-lg border bg-white shadow-lg overflow-hidden z-10"
+                style={{ borderColor: "var(--border)", bottom: "calc(100% + 4px)", left: "1rem", minWidth: "12rem" }}
+              >
+                {sugerencias.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => elegirMencion(c)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--bg)]"
+                  >
+                    {c.full_name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              ref={inputRef}
+              value={texto}
+              onChange={handleTextoChange}
+              placeholder={esDirecto ? `Escribe a ${nombrePorId.get(seleccion) ?? "este usuario"}…` : "Escribe un mensaje… (usa @ para mencionar)"}
+              className="flex-1 rounded-lg border px-3.5 py-2.5 text-sm outline-none"
+              style={{ borderColor: "var(--border)" }}
+            />
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:underline cursor-pointer"
+              style={{ background: "var(--ink-900)" }}
+            >
+              Enviar
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GestionGrupo({
+  grupoId,
+  nombreInicial,
+  miembrosIniciales,
+  todosUsuarios,
+  currentUserId,
+  onCerrar,
+  onListo,
+  onEliminado,
+}: {
+  grupoId: string | null;
+  nombreInicial: string;
+  miembrosIniciales: string[];
+  todosUsuarios: Contacto[];
+  currentUserId: string;
+  onCerrar: () => void;
+  onListo: (idGrupo: string) => void;
+  onEliminado: () => void;
+}) {
+  const [nombre, setNombre] = useState(nombreInicial);
+  const [miembros, setMiembros] = useState<string[]>(miembrosIniciales);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function toggleMiembro(id: string) {
+    setMiembros((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
+  }
+
+  function guardar() {
+    setError(null);
+    startTransition(async () => {
+      if (grupoId) {
+        const res = await editarGrupo(grupoId, nombre, miembros);
+        if (res?.error) { setError(res.error); return; }
+        onListo(grupoId);
+      } else {
+        const res = await crearGrupo(nombre, miembros);
+        if (res?.error) { setError(res.error); return; }
+        onListo(res.id as string);
+      }
+    });
+  }
+
+  function eliminar() {
+    if (!grupoId) return;
+    if (!confirm(`¿Eliminar el grupo "${nombreInicial}"? El historial de mensajes de este grupo se pierde.`)) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await eliminarGrupo(grupoId);
+      if (res?.error) { setError(res.error); return; }
+      onEliminado();
+    });
+  }
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0 p-6 overflow-y-auto">
+      <h2 className="font-display text-lg font-semibold mb-1">{grupoId ? "Editar grupo" : "Nuevo grupo"}</h2>
+      <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
+        Ponle un nombre y elige quiénes pertenecen a este grupo.
+      </p>
+
+      <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Nombre del grupo</label>
+      <input
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        placeholder="Ej: Soporte técnico"
+        className="rounded-lg border px-3.5 py-2.5 text-sm outline-none mb-4 max-w-sm"
+        style={{ borderColor: "var(--border)" }}
+      />
+
+      <label className="text-xs font-medium block mb-2" style={{ color: "var(--text-secondary)" }}>Miembros</label>
+      <div className="flex flex-col gap-1.5 mb-4 max-w-sm">
+        {todosUsuarios.map((u) => (
+          <label key={u.id} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={miembros.includes(u.id)} onChange={() => toggleMiembro(u.id)} />
+            {u.full_name} {u.id === currentUserId && "(tú)"}
+          </label>
+        ))}
+      </div>
+
+      {error && <p className="text-sm mb-3" style={{ color: "var(--state-desactivada)" }}>{error}</p>}
+
+      <div className="flex gap-3">
+        <button onClick={guardar} disabled={isPending} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 hover:underline cursor-pointer" style={{ background: "var(--ink-900)" }}>
+          {isPending ? "Guardando…" : "Guardar"}
+        </button>
+        <button onClick={onCerrar} disabled={isPending} className="rounded-lg border px-4 py-2 text-sm font-medium hover:underline cursor-pointer" style={{ borderColor: "var(--border)" }}>
+          Cancelar
+        </button>
+        {grupoId && (
+          <button onClick={eliminar} disabled={isPending} className="rounded-lg border px-4 py-2 text-sm font-medium hover:underline cursor-pointer" style={{ borderColor: "var(--border)", color: "var(--state-desactivada)" }}>
+            Eliminar grupo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
