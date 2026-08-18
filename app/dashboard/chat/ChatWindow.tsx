@@ -51,6 +51,7 @@ export default function ChatWindow({
   const [otroLeidoHasta, setOtroLeidoHasta] = useState<string | null>(null);
   const [mencionActiva, setMencionActiva] = useState<{ inicio: number; filtro: string } | null>(null);
   const [gestionAbierta, setGestionAbierta] = useState<"nuevo" | string | null>(null); // string = id de grupo a editar
+  const [usuariosEnLinea, setUsuariosEnLinea] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [arrastrando, setArrastrando] = useState(false);
   const [subiendoAdjunto, setSubiendoAdjunto] = useState(false);
@@ -186,6 +187,28 @@ export default function ChatWindow({
 
     return () => { supabase.removeChannel(canal); };
   }, [organizationId, router]);
+
+  // Presencia en línea: cada persona que tiene el chat abierto "avisa" que
+  // está conectada, y todos los demás lo ven al instante (punto verde).
+  useEffect(() => {
+    const supabase = createClient();
+    const canal = supabase.channel(`presencia-chat-${organizationId}`, {
+      config: { presence: { key: currentUserId } },
+    });
+
+    canal
+      .on("presence", { event: "sync" }, () => {
+        const estado = canal.presenceState();
+        setUsuariosEnLinea(new Set(Object.keys(estado)));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await canal.track({ online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => { supabase.removeChannel(canal); };
+  }, [organizationId, currentUserId]);
 
   const mensajesVisibles = mensajes.filter(esRelevante);
 
@@ -420,19 +443,26 @@ export default function ChatWindow({
             ))}
 
             <div className="px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
-              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Directos</span>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                Directos{contactos.filter((c) => usuariosEnLinea.has(c.id)).length > 0 && ` · ${contactos.filter((c) => usuariosEnLinea.has(c.id)).length} en línea`}
+              </span>
             </div>
             {contactos.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSeleccion(c.id)}
-                className="w-full text-left px-4 py-3 text-sm border-b"
+                className="w-full text-left px-4 py-3 text-sm border-b flex items-center gap-2"
                 style={{
                   borderColor: "var(--border)",
                   background: seleccion === c.id ? "var(--bg)" : "transparent",
                   fontWeight: seleccion === c.id ? 600 : 400,
                 }}
               >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: usuariosEnLinea.has(c.id) ? "#3BA55D" : "var(--text-muted)", opacity: usuariosEnLinea.has(c.id) ? 1 : 0.35 }}
+                  title={usuariosEnLinea.has(c.id) ? "En línea" : "Desconectado"}
+                />
                 {c.full_name}
               </button>
             ))}
@@ -471,7 +501,14 @@ export default function ChatWindow({
           <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
             <p className="font-medium text-sm">{tituloConversacion()}</p>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {esGeneral ? "Visible para todos en tu organización" : esGrupo ? "Visible para los miembros del grupo" : "Mensaje directo"} · el historial nunca se borra
+              {esGeneral
+                ? "Visible para todos en tu organización"
+                : esGrupo
+                ? "Visible para los miembros del grupo"
+                : usuariosEnLinea.has(seleccion)
+                ? <span style={{ color: "#3BA55D" }}>● En línea</span>
+                : "Mensaje directo"}
+              {" "}· el historial nunca se borra
               {(esGeneral || esGrupo) && " · escribe @ para mencionar a alguien"}
             </p>
           </div>
@@ -504,7 +541,7 @@ export default function ChatWindow({
                         </a>
                       )}
                       {m.attachment_url && m.attachment_type === "file" && (
-                        <a
+                        
                           href={m.attachment_url}
                           target="_blank"
                           rel="noreferrer"
