@@ -62,7 +62,7 @@ export default async function DashboardPage({
             className="rounded-lg border px-4 py-2.5 text-sm font-medium bg-white flex items-center"
             style={{ borderColor: "var(--border)" }}
           >
-            ⬇ Exportar a Excel
+            {"\u2B07"} Exportar a Excel
           </a>
           <Link
             href="/dashboard/nueva"
