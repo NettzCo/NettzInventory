@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays } from "date-fns";
+import { addMonths, differenceInCalendarDays } from "date-fns";
 import { SimCurrentView, EstadoSim } from "./types";
 
 // Días antes del aniversario en que empieza a mostrarse la alerta.
@@ -49,7 +49,8 @@ export function calcularAlertas(
     if (!fechaActivacionStr) continue; // nunca ha estado activa: no hay aniversario que calcular
 
     const fechaActivacion = new Date(fechaActivacionStr);
-    const fechaAniversario = addDays(fechaActivacion, 365);
+    const meses = sim.duracion_meses ?? 12; // SIM antiguas sin este dato: se asume 12 meses
+    const fechaAniversario = addMonths(fechaActivacion, meses);
     const diasRestantes = differenceInCalendarDays(fechaAniversario, hoy);
 
     if (diasRestantes <= umbralDias) {
@@ -71,7 +72,8 @@ export function contarAlertasActivas(sims: SimCurrentView[], umbralDias: number 
     if (sim.tipo_plan !== "Prepago") continue;
     if (sim.estado_actual !== "Activa") continue;
     if (!sim.estado_desde) continue;
-    const diasRestantes = differenceInCalendarDays(addDays(new Date(sim.estado_desde), 365), hoy);
+    const meses = sim.duracion_meses ?? 12;
+    const diasRestantes = differenceInCalendarDays(addMonths(new Date(sim.estado_desde), meses), hoy);
     if (diasRestantes <= umbralDias) count++;
   }
   return count;

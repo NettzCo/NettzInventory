@@ -544,6 +544,7 @@ create table if not exists sim_assignments (
   plan_cantidad numeric not null check (plan_cantidad > 0),
   tipo_plan text not null check (tipo_plan in ('Prepago', 'Postpago')),
   pago_momento text not null check (pago_momento in ('Anticipado', 'Mes vencido')),
+  duracion_meses integer check (duracion_meses in (6, 12)), -- solo aplica si tipo_plan = 'Prepago'
 
   precio_cliente numeric not null check (precio_cliente >= 0),
 
@@ -589,7 +590,8 @@ select
   a.broker_id,
   bp.full_name           as broker_nombre,
   a.fecha_entrega,
-  a.assigned_at          as cliente_desde
+  a.assigned_at          as cliente_desde,
+  a.duracion_meses
 from sim_cards s
 left join lateral (
   select * from sim_short_numbers

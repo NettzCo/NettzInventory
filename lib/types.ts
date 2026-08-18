@@ -146,6 +146,7 @@ export interface SimAssignment {
   plan_cantidad: number;
   tipo_plan: TipoPlan;
   pago_momento: PagoMomento;
+  duracion_meses: number | null; // solo aplica si tipo_plan === "Prepago"
   precio_cliente: number;
   comercial_id: string;
   broker_id: string | null;
@@ -171,6 +172,7 @@ export interface SimCurrentView {
   plan_cantidad: number | null;
   tipo_plan: TipoPlan | null;
   pago_momento: PagoMomento | null;
+  duracion_meses: number | null;
   precio_cliente: number | null;
   comercial_id: string | null;
   comercial_nombre: string | null;
