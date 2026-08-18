@@ -4,7 +4,12 @@ import { tieneModulo } from "@/lib/modules";
 import { redirect } from "next/navigation";
 import ChatWindow from "./ChatWindow";
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ con?: string }>;
+}) {
+  const { con } = await searchParams;
   const { userId, profile } = await getCurrentProfile();
   if (!tieneModulo(profile, "chat")) redirect("/dashboard");
 
@@ -24,7 +29,12 @@ export default async function ChatPage() {
         Habla con todo tu equipo en el canal general, o en directo con una persona — por ejemplo,
         para pasarle al área técnica los datos de una entrega recién registrada. Nada se borra.
       </p>
-      <ChatWindow currentUserId={userId} organizationId={profile.organization_id} contactos={contactos ?? []} />
+      <ChatWindow
+        currentUserId={userId}
+        organizationId={profile.organization_id}
+        contactos={contactos ?? []}
+        conversacionInicial={con === "general" ? null : con || null}
+      />
     </main>
   );
 }
