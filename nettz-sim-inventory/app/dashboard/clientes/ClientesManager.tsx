@@ -32,7 +32,7 @@ export default function ClientesManager({ clientes }: { clientes: Cliente[] }) {
           className="rounded-lg border px-4 py-2 text-sm font-medium bg-white"
           style={{ borderColor: "var(--border)" }}
         >
-          ⬇ Descargar base de clientes
+          {"\u2B07"} Descargar base de clientes
         </a>
       </div>
 
