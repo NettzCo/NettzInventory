@@ -189,6 +189,31 @@ export interface HojaDeVidaEvento {
   usuario_nombre: string;
 }
 
+export type EstadoPedido = "Pendiente" | "Enviado";
+
+export interface Pedido {
+  id: string;
+  organization_id: string;
+  cliente_id: string | null;
+  cliente_nombre: string;
+  cantidad: number;
+  proveedor: string;
+  apn: string | null;
+  pais: string;
+  ciudad: string;
+  direccion: string;
+  contacto_nombre: string;
+  contacto_telefono: string;
+  contacto_correo: string | null;
+  asignado_a: string;
+  estado: EstadoPedido;
+  observaciones: string | null;
+  created_at: string;
+  created_by: string;
+  enviado_at: string | null;
+  enviado_by: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   organization_id: string;

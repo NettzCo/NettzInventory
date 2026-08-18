@@ -10,6 +10,7 @@ export const MODULOS = [
   { key: "inventario", label: "Inventario" }, // incluye Búsqueda rápida y Registrar entrega
   { key: "alertas", label: "Alertas" },
   { key: "clientes", label: "Clientes" },
+  { key: "pedidos", label: "Pedidos" },
   { key: "chat", label: "Chat" },
 ] as const;
 

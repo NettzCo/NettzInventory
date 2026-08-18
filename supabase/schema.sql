@@ -56,22 +56,22 @@ create table if not exists roles (
 
 -- Roles por defecto de Nettz (la organización semilla)
 insert into roles (organization_id, name, is_system, can_manage_organizations, default_modulos)
-select id, 'Super administrador', true, true, array['inventario', 'alertas', 'clientes', 'chat']
+select id, 'Super administrador', true, true, array['inventario', 'alertas', 'clientes', 'pedidos', 'chat']
 from organizations where name = 'Nettz'
 on conflict (organization_id, name) do nothing;
 
 insert into roles (organization_id, name, is_system, default_modulos)
-select id, 'Comercial', false, array['inventario', 'alertas', 'clientes', 'chat']
+select id, 'Comercial', false, array['inventario', 'alertas', 'clientes', 'pedidos', 'chat']
 from organizations where name = 'Nettz'
 on conflict (organization_id, name) do nothing;
 
 insert into roles (organization_id, name, is_system, default_modulos)
-select id, 'Broker', false, array['inventario', 'alertas', 'chat']
+select id, 'Broker', false, array['inventario', 'alertas', 'pedidos', 'chat']
 from organizations where name = 'Nettz'
 on conflict (organization_id, name) do nothing;
 
 insert into roles (organization_id, name, is_system, default_modulos)
-select id, 'Facturación', false, array['inventario', 'alertas', 'chat']
+select id, 'Facturación', false, array['inventario', 'alertas', 'pedidos', 'chat']
 from organizations where name = 'Nettz'
 on conflict (organization_id, name) do nothing;
 
@@ -83,7 +83,7 @@ create table if not exists profiles (
   full_name text not null,
   organization_id uuid references organizations(id) on delete restrict,
   role_id uuid references roles(id) on delete restrict,
-  modulos text[] not null default array['inventario', 'alertas', 'chat'],
+  modulos text[] not null default array['inventario', 'alertas', 'pedidos', 'chat'],
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
@@ -380,6 +380,22 @@ create table if not exists chat_messages (
 create index if not exists idx_chat_org_created on chat_messages (organization_id, created_at);
 create index if not exists idx_chat_dm on chat_messages (sender_id, recipient_id);
 
+-- ---------------------------------------------------------
+-- Marca de "hasta cuándo leíste" cada conversación del chat — para saber
+-- qué mensajes generan una alerta pendiente. "conversation" es 'general'
+-- para el canal general, o el id del otro usuario para un directo.
+-- ---------------------------------------------------------
+create table if not exists chat_reads (
+  user_id uuid not null references profiles(id) on delete cascade,
+  conversation text not null,
+  last_read_at timestamptz not null default now(),
+  primary key (user_id, conversation)
+);
+alter table chat_reads enable row level security;
+create policy "own chat reads" on chat_reads for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 -- Habilita las actualizaciones en tiempo real del chat (para que los
 -- mensajes nuevos aparezcan sin recargar la página)
 do $$
@@ -389,6 +405,19 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'chat_messages'
   ) then
     alter publication supabase_realtime add table chat_messages;
+  end if;
+end $$;
+
+-- Igual para chat_reads — así la campanita de Alertas se actualiza al
+-- instante también cuando se marca algo como leído (por ejemplo, desde otra
+-- pestaña abierta con el chat).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'chat_reads'
+  ) then
+    alter publication supabase_realtime add table chat_reads;
   end if;
 end $$;
 
@@ -650,6 +679,58 @@ create policy "platform upload logos" on storage.objects for insert
   with check (bucket_id = 'org-logos' and current_role_can_manage_orgs());
 create policy "platform update logos" on storage.objects for update
   using (bucket_id = 'org-logos' and current_role_can_manage_orgs());
+
+-- ---------------------------------------------------------
+-- PEDIDOS DE SIM CARDS (cualquier usuario registra un pedido de un cliente
+-- y lo asigna a otra persona, por ejemplo un comercial, para que lo envíe)
+-- ---------------------------------------------------------
+create table if not exists pedidos (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  cliente_id uuid references clientes(id),
+  cliente_nombre text not null, -- copia del nombre al momento del pedido, por si el cliente cambia después
+  cantidad integer not null check (cantidad > 0),
+  proveedor text not null,
+  apn text,
+  pais text not null,
+  ciudad text not null,
+  direccion text not null,
+  contacto_nombre text not null,
+  contacto_telefono text not null,
+  contacto_correo text,
+  asignado_a uuid not null references profiles(id),
+  estado text not null default 'Pendiente' check (estado in ('Pendiente', 'Enviado')),
+  observaciones text,
+  created_at timestamptz not null default now(),
+  created_by uuid not null references profiles(id),
+  enviado_at timestamptz,
+  enviado_by uuid references profiles(id)
+);
+
+create index if not exists idx_pedidos_org on pedidos (organization_id, created_at);
+create index if not exists idx_pedidos_asignado on pedidos (asignado_a, estado);
+
+alter table pedidos enable row level security;
+
+create policy "read pedidos" on pedidos for select
+  using (organization_id = current_org_id());
+
+create policy "insert pedidos" on pedidos for insert
+  with check (organization_id = current_org_id() and tiene_modulo('pedidos'));
+
+create policy "update pedidos" on pedidos for update
+  using (organization_id = current_org_id() and tiene_modulo('pedidos'))
+  with check (organization_id = current_org_id() and tiene_modulo('pedidos'));
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'pedidos'
+  ) then
+    alter publication supabase_realtime add table pedidos;
+  end if;
+end $$;
 
 -- Semilla inicial de proveedores de Nettz (puedes agregar/eliminar desde el panel)
 insert into providers (organization_id, name)
