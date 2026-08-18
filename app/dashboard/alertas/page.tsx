@@ -9,7 +9,7 @@ import AlertasPedidosLive from "./AlertasPedidosLive";
 import { formatFecha, formatMoneda } from "@/lib/ui";
 import Link from "next/link";
 
-const UMBRALES = [15, 30, 60, 90];
+const UMBRALES = [7, 15, 30, 60];
 
 function aArray(v: string | string[] | undefined): string[] {
   if (!v) return [];
@@ -88,17 +88,14 @@ export default async function AlertasPage({
           <p className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Anticipación</p>
           <div className="flex gap-2">
             {UMBRALES.map((u) => (
-              <label
-                key={u}
-                className="rounded-lg border px-3 py-1.5 text-sm font-medium cursor-pointer"
-                style={{
-                  borderColor: "var(--border)",
-                  background: umbral === u ? "var(--ink-900)" : "white",
-                  color: umbral === u ? "white" : "var(--text-primary)",
-                }}
-              >
-                <input type="radio" name="dias" value={u} defaultChecked={umbral === u} className="hidden" />
-                {u} días
+              <label key={u} className="cursor-pointer">
+                <input type="radio" name="dias" value={u} defaultChecked={umbral === u} className="peer hidden" />
+                <span
+                  className="peer-checked:!bg-[var(--ink-900)] peer-checked:!text-white rounded-lg border px-3 py-1.5 text-sm font-medium block transition"
+                  style={{ borderColor: "var(--border)", background: "white", color: "var(--text-primary)" }}
+                >
+                  {u} días
+                </span>
               </label>
             ))}
           </div>
