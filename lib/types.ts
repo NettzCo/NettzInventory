@@ -133,9 +133,24 @@ export interface SimStatusHistory {
   id: string;
   sim_id: string;
   estado: EstadoSim;
+  estado_anterior: EstadoSim | null;
+  bulk_operation_id: string | null;
   changed_at: string;
   changed_by: string;
   nota: string | null;
+}
+
+export interface BulkOperation {
+  id: string;
+  organization_id: string;
+  tipo: "cambio_estado" | "registro_entrega";
+  estado_nuevo: EstadoSim | null;
+  cantidad_sims: number;
+  nota: string | null;
+  created_by: string;
+  created_at: string;
+  revertida_at: string | null;
+  revertida_by: string | null;
 }
 
 export interface SimAssignment {
@@ -151,6 +166,8 @@ export interface SimAssignment {
   comercial_id: string;
   broker_id: string | null;
   fecha_entrega: string;
+  bulk_operation_id: string | null;
+  ended_by_bulk_operation_id: string | null;
   assigned_at: string;
   ended_at: string | null;
   created_by: string;
