@@ -12,6 +12,17 @@ export default function StatusPill({ estado }: { estado: EstadoSim | null }) {
 
   const color = ESTADO_COLOR[estado];
 
+  // "Vencida" necesita destacar de verdad — fondo sólido y texto blanco,
+  // en vez del tinte suave que usan los demás estados.
+  if (estado === "Vencida") {
+    return (
+      <span className="status-pill" style={{ background: color, color: "#fff", fontWeight: 600 }}>
+        <span className="status-dot" style={{ background: "#fff" }} />
+        {estado}
+      </span>
+    );
+  }
+
   return (
     <span
       className="status-pill"

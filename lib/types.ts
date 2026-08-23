@@ -15,7 +15,8 @@ export type EstadoSim =
   | "Lista para activar"
   | "Activa"
   | "Desactivada temporal"
-  | "Desactivada";
+  | "Desactivada"
+  | "Vencida";
 
 export const ESTADOS_SIM: EstadoSim[] = [
   "Inactiva",
@@ -23,6 +24,7 @@ export const ESTADOS_SIM: EstadoSim[] = [
   "Activa",
   "Desactivada temporal",
   "Desactivada",
+  "Vencida",
 ];
 
 export type PlanUnidad = "Megas" | "Gigas";
