@@ -12,6 +12,7 @@ export const MODULOS = [
   { key: "clientes", label: "Clientes" },
   { key: "pedidos", label: "Pedidos" },
   { key: "chat", label: "Chat" },
+  { key: "reportes", label: "Reportes" },
 ] as const;
 
 export type ModuloKey = (typeof MODULOS)[number]["key"];
