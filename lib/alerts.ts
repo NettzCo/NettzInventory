@@ -1,4 +1,4 @@
-import { addMonths, differenceInCalendarDays } from "date-fns";
+import { addMonths, differenceInCalendarDays, format } from "date-fns";
 import { SimCurrentView, EstadoSim } from "./types";
 
 // Días antes del aniversario en que empieza a mostrarse la alerta.
@@ -13,12 +13,21 @@ export interface AlertaVencimiento {
   fechaActivacion: string;
   fechaAniversario: string;
   diasRestantes: number; // negativo = ya vencido
+  vista: boolean;
 }
 
 export interface FiltrosAlertas {
   estados?: EstadoSim[]; // si se omite, solo "Activa"
   proveedor?: string;    // si se omite, todos
   umbralDias?: number;
+}
+
+/** Llave para identificar "esta alerta puntual" en sim_alert_reads — atada
+ *  a la fecha de vencimiento, así si esa fecha cambia (renovación, corrección
+ *  de fecha de entrega), la alerta cuenta como nueva y no queda oculta. */
+export function llaveAlerta(simId: string, fechaAniversario: Date | string): string {
+  const fecha = typeof fechaAniversario === "string" ? new Date(fechaAniversario) : fechaAniversario;
+  return `${simId}|${format(fecha, "yyyy-MM-dd")}`;
 }
 
 /**
@@ -32,10 +41,14 @@ export interface FiltrosAlertas {
  * como "Activa" recién hoy aunque la SIM ya llevara meses entregada — si se
  * contara desde ese cambio de estado, el plazo parecería reiniciar y nunca
  * se generaría la alerta.
+ *
+ * `vistas` es el conjunto de llaves (ver `llaveAlerta`) que la persona ya
+ * marcó como vistas — esas alertas se devuelven igual (para poder listarlas)
+ * pero con `vista: true`, así se pueden mostrar aparte y no sumar al conteo.
  */
 export function calcularAlertas(
   sims: SimCurrentView[],
-  _ultimaActivacionPorSim: Record<string, string>,
+  vistas: Set<string> = new Set(),
   filtros: FiltrosAlertas = {}
 ): AlertaVencimiento[] {
   const estados = filtros.estados && filtros.estados.length > 0 ? filtros.estados : ESTADOS_ALERTA_DEFAULT;
@@ -62,7 +75,13 @@ export function calcularAlertas(
     if (!coincideFiltro) continue;
 
     if (diasRestantes <= umbralDias) {
-      alertas.push({ sim, fechaActivacion: sim.fecha_entrega, fechaAniversario: fechaAniversario.toISOString(), diasRestantes });
+      alertas.push({
+        sim,
+        fechaActivacion: sim.fecha_entrega,
+        fechaAniversario: fechaAniversario.toISOString(),
+        diasRestantes,
+        vista: vistas.has(llaveAlerta(sim.id, fechaAniversario)),
+      });
     }
   }
 
@@ -71,9 +90,13 @@ export function calcularAlertas(
 
 /**
  * Versión ligera para la insignia del menú: solo SIM prepago que están
- * ACTUALMENTE activas (no necesita consultar el historial completo).
+ * ACTUALMENTE activas y cuya alerta todavía no fue marcada como vista.
  */
-export function contarAlertasActivas(sims: SimCurrentView[], umbralDias: number = DIAS_ALERTA_DEFAULT): number {
+export function contarAlertasActivas(
+  sims: SimCurrentView[],
+  vistas: Set<string> = new Set(),
+  umbralDias: number = DIAS_ALERTA_DEFAULT
+): number {
   const hoy = new Date();
   let count = 0;
   for (const sim of sims) {
@@ -81,8 +104,9 @@ export function contarAlertasActivas(sims: SimCurrentView[], umbralDias: number 
     if (sim.estado_actual !== "Activa") continue;
     if (!sim.fecha_entrega) continue;
     const meses = sim.duracion_meses ?? 12;
-    const diasRestantes = differenceInCalendarDays(addMonths(new Date(`${sim.fecha_entrega}T00:00:00`), meses), hoy);
-    if (diasRestantes <= umbralDias) count++;
+    const fechaAniversario = addMonths(new Date(`${sim.fecha_entrega}T00:00:00`), meses);
+    const diasRestantes = differenceInCalendarDays(fechaAniversario, hoy);
+    if (diasRestantes <= umbralDias && !vistas.has(llaveAlerta(sim.id, fechaAniversario))) count++;
   }
   return count;
 }
