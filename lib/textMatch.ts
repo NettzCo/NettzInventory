@@ -37,13 +37,22 @@ export function distanciaLevenshtein(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
+export interface CoincidenciaCliente {
+  nombre: string;
+  /** "exacta": mismo texto, solo cambia mayúsculas/minúsculas/tildes/espacios
+   *  — es sin duda el mismo cliente, no hace falta preguntar.
+   *  "aproximada": se parece (posible typo) pero no es el mismo texto — acá
+   *  sí conviene confirmar con la persona antes de asumir que es el mismo. */
+  tipo: "exacta" | "aproximada";
+}
+
 /**
- * Busca, entre una lista de nombres ya existentes, uno que probablemente sea
- * el mismo cliente que `nombreEscrito` pero tecleado distinto (mayúsculas,
- * tildes, espacios, o un typo). Devuelve el nombre existente sugerido, o
- * null si no hay ninguno parecido (probablemente sí es un cliente nuevo).
+ * Como `encontrarClienteSimilar`, pero además indica si la coincidencia es
+ * exacta (mismo texto salvo formato) o solo aproximada (probable typo) —
+ * así quien la use puede resolver las exactas en automático y solo pedir
+ * confirmación humana para las aproximadas.
  */
-export function encontrarClienteSimilar(nombreEscrito: string, clientesExistentes: string[]): string | null {
+export function encontrarClienteSimilarConTipo(nombreEscrito: string, clientesExistentes: string[]): CoincidenciaCliente | null {
   const normEscrito = normalizarTexto(nombreEscrito);
   if (!normEscrito) return null;
 
@@ -51,7 +60,7 @@ export function encontrarClienteSimilar(nombreEscrito: string, clientesExistente
 
   for (const existente of clientesExistentes) {
     const normExistente = normalizarTexto(existente);
-    if (normExistente === normEscrito) return existente; // mismo texto, solo cambia formato/tildes
+    if (normExistente === normEscrito) return { nombre: existente, tipo: "exacta" };
 
     const distancia = distanciaLevenshtein(normEscrito, normExistente);
     const umbral = Math.max(2, Math.floor(normExistente.length * 0.2));
@@ -60,5 +69,15 @@ export function encontrarClienteSimilar(nombreEscrito: string, clientesExistente
     }
   }
 
-  return mejor ? mejor.nombre : null;
+  return mejor ? { nombre: mejor.nombre, tipo: "aproximada" } : null;
+}
+
+/**
+ * Busca, entre una lista de nombres ya existentes, uno que probablemente sea
+ * el mismo cliente que `nombreEscrito` pero tecleado distinto (mayúsculas,
+ * tildes, espacios, o un typo). Devuelve el nombre existente sugerido, o
+ * null si no hay ninguno parecido (probablemente sí es un cliente nuevo).
+ */
+export function encontrarClienteSimilar(nombreEscrito: string, clientesExistentes: string[]): string | null {
+  return encontrarClienteSimilarConTipo(nombreEscrito, clientesExistentes)?.nombre ?? null;
 }
