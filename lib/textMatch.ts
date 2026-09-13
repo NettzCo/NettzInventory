@@ -7,6 +7,22 @@ export function normalizarTexto(s: string): string {
     .replace(/\s+/g, " ");
 }
 
+/**
+ * Busca `valorEscrito` dentro de `opcionesValidas` sin importar mayúsculas,
+ * minúsculas ni tildes (por ejemplo, "POSTPAGO", "postpago" y "Postpago"
+ * deben tratarse como el mismo valor). Si encuentra coincidencia, devuelve
+ * el valor tal como está escrito en `opcionesValidas` (su forma "canónica"
+ * — cada campo tiene la suya: unos van en mayúscula sostenida como
+ * INDUSTRIAS, otros en formato oración como los estados de SIM — así que
+ * nunca se asume un formato fijo, se usa el que ya está definido).
+ * Devuelve null si no hay ninguna coincidencia.
+ */
+export function emparejarValorInsensible<T extends string>(valorEscrito: string, opcionesValidas: readonly T[]): T | null {
+  const norm = normalizarTexto(valorEscrito);
+  if (!norm) return null;
+  return opcionesValidas.find((op) => normalizarTexto(op) === norm) ?? null;
+}
+
 export function distanciaLevenshtein(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) dp[i][0] = i;
