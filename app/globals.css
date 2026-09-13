@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root {
+  /* ---- Paleta real de marca: negro (como en nettz.com) + amarillo de los puntos ---- */
+  --ink-950: #0a0a09;
+  --ink-900: #101010;
+  --ink-800: #1c1c1a;
+  --ink-700: #2c2c2a;
+  --ink-100: #ece9d6;
+
+  --bg: #f5f5f1;
+  --surface: #ffffff;
+  --border: #e4e2d8;
+
+  --chip-gold: #a89600;
+  --chip-gold-soft: #f4f0cf;
+  --brand-yellow: #e8da00;
+
+  --text-primary: #242307;
+  --text-secondary: #63604a;
+  --text-muted: #9a9782;
+
+  --state-inactiva: #64748b;
+  --state-lista: #a89600;
+  --state-activa: #2f9e64;
+  --state-desactivada-temp: #e07a3f;
+  --state-desactivada: #d64545;
+  --state-vencida: #dc0000;
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.icc-number {
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  font-size: 0.85rem;
+}
+
+::selection {
+  background: var(--chip-gold-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--chip-gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.input-filter {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  background: white;
+}
+
+/* ---- Enlaces de navegación (sidebar): feedback visual claro en hover y click ---- */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink-100);
+  background: transparent;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.nav-link:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+.nav-link.active {
+  background: var(--ink-800);
+  color: #fff;
+}
+.nav-link.active:hover {
+  background: var(--ink-800);
+}
+
+.signout-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink-100);
+  background: transparent;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  cursor: pointer;
+}
+.signout-link:hover {
+  background: rgba(224, 90, 60, 0.16);
+  color: #f2c9bb;
+}
+.signout-link:active {
+  background: rgba(224, 90, 60, 0.28);
+}
