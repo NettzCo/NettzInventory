@@ -61,6 +61,14 @@ export function traducirError(mensajeCrudo: string | null | undefined): string {
     return "El archivo es demasiado grande. Intenta con un archivo más chico o divídelo en partes.";
   }
 
+  // Errores internos de React/Next.js (minificados en producción, con un
+  // link a react.dev) — nunca son algo que la persona pueda resolver por su
+  // cuenta leyendo el código de error, así que se les da un mensaje limpio
+  // en vez del texto técnico con el enlace de desarrollador.
+  if (m.includes("minified react error") || m.includes("hydration") || m.includes("react.dev/errors")) {
+    return "Ocurrió un problema técnico inesperado al mostrar esta pantalla. Prueba recargar la página — si sigue pasando, avísale a soporte con el código de referencia de abajo.";
+  }
+
   // Nada reconocido — se devuelve tal cual, pero al menos con una frase
   // introductoria para que no se vea como un mensaje roto del sistema.
   return `No se pudo completar la acción: ${mensajeCrudo}`;
