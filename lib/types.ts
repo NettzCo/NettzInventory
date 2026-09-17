@@ -133,6 +133,18 @@ export interface SimShortNumber {
   closed_by_bulk_operation_id: string | null;
 }
 
+/** Fila de sim_short_number_status_view — usada en "Números disponibles". */
+export interface SimShortNumberStatus {
+  organization_id: string;
+  numero_corto: string;
+  sim_id_actual: string | null;
+  icc_actual: string | null;
+  estado_actual: EstadoSim | null;
+  cliente_actual: string | null;
+  proveedor: string | null;
+  disponible: boolean; // true = sin ningún ICC asignado hoy
+}
+
 export interface SimStatusHistory {
   id: string;
   sim_id: string;
