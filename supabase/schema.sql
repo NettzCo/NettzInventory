@@ -485,6 +485,31 @@ begin
 end $$;
 
 -- ---------------------------------------------------------
+-- MARCAS DE "VISTA" PARA ALERTAS DE VENCIMIENTO
+-- Atada a la fecha de vencimiento calculada: si la SIM se renueva o se
+-- corrige la fecha de entrega, el vencimiento cambia y la alerta vuelve a
+-- aparecer como no vista — no queda oculta para siempre por error.
+-- ---------------------------------------------------------
+create table if not exists sim_alert_reads (
+  sim_id uuid not null references sim_cards(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  fecha_aniversario date not null,
+  vista_at timestamptz not null default now(),
+  primary key (sim_id, user_id, fecha_aniversario)
+);
+alter table sim_alert_reads enable row level security;
+
+drop policy if exists "read own sim alert reads" on sim_alert_reads;
+create policy "read own sim alert reads" on sim_alert_reads for select
+  using (user_id = auth.uid());
+drop policy if exists "write own sim alert reads" on sim_alert_reads;
+create policy "write own sim alert reads" on sim_alert_reads for insert
+  with check (user_id = auth.uid());
+drop policy if exists "delete own sim alert reads" on sim_alert_reads;
+create policy "delete own sim alert reads" on sim_alert_reads for delete
+  using (user_id = auth.uid());
+
+-- ---------------------------------------------------------
 -- SIM CARDS (registro maestro por ICC, por organización — nunca se borra)
 -- ---------------------------------------------------------
 create table if not exists sim_cards (
@@ -494,12 +519,44 @@ create table if not exists sim_cards (
   proveedor text not null,
   apn text,
   observaciones text,
+  imei text,
   created_at timestamptz not null default now(),
   created_by uuid not null references profiles(id),
   unique (organization_id, icc)
 );
 
+-- Por si la tabla ya existía de antes sin esta columna.
+alter table sim_cards add column if not exists imei text;
+
 create index if not exists idx_sim_cards_icc on sim_cards (organization_id, icc);
+
+-- ---------------------------------------------------------
+-- SINCRONIZACIÓN CON SIMPRO (WIRELESS LOGIC)
+-- Un registro por cada corrida de sincronización, para poder ver el
+-- historial y — sobre todo — revisar qué valores de estado llegaron de
+-- SIMPro sin poder mapearse a un estado de Nettz (ver
+-- lib/integrations/simpro/estadoMapping.ts).
+-- ---------------------------------------------------------
+create table if not exists simpro_sync_runs (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  disparado_por text not null default 'manual', -- 'manual' | 'cron'
+  total_sims integer default 0,
+  creadas integer default 0,
+  actualizadas integer default 0,
+  sin_cambios integer default 0,
+  errores integer default 0,
+  estados_sin_mapear jsonb default '[]'::jsonb, -- valores de estado de SIMPro que no se reconocieron
+  detalle_errores jsonb default '[]'::jsonb,
+  error_general text -- si la corrida completa falló (ej: credenciales mal puestas)
+);
+alter table simpro_sync_runs enable row level security;
+
+drop policy if exists "org members read simpro sync runs" on simpro_sync_runs;
+create policy "org members read simpro sync runs" on simpro_sync_runs for select
+  using (organization_id in (select organization_id from profiles where id = auth.uid()));
 
 -- ---------------------------------------------------------
 -- HISTORIAL DE NÚMERO CORTO
@@ -507,13 +564,30 @@ create index if not exists idx_sim_cards_icc on sim_cards (organization_id, icc)
 create table if not exists sim_short_numbers (
   id uuid primary key default gen_random_uuid(),
   sim_id uuid not null references sim_cards(id) on delete cascade,
+  organization_id uuid references organizations(id) on delete cascade,
   numero_corto text not null,
   assigned_at timestamptz not null default now(),
   unassigned_at timestamptz,
   assigned_by uuid not null references profiles(id)
 );
 
+-- Por si la tabla ya existía de antes sin esta columna.
+alter table sim_short_numbers add column if not exists organization_id uuid references organizations(id) on delete cascade;
+update sim_short_numbers sn set organization_id = sc.organization_id
+  from sim_cards sc where sc.id = sn.sim_id and sn.organization_id is null;
+alter table sim_short_numbers alter column organization_id set not null;
+
 create index if not exists idx_short_numbers_sim on sim_short_numbers (sim_id);
+
+-- Un número corto no puede estar activo (sin desasignar) en más de una SIM
+-- a la vez, DENTRO DE LA MISMA ORGANIZACIÓN — cada organización puede
+-- reutilizar libremente los mismos números cortos que use otra, sin chocar
+-- entre sí (antes esta restricción era global entre todas las
+-- organizaciones, lo cual bloqueaba cargas válidas sin avisar por qué).
+drop index if exists idx_short_numbers_unico_activo;
+create unique index if not exists idx_short_numbers_unico_activo_por_org
+  on sim_short_numbers (organization_id, numero_corto)
+  where unassigned_at is null;
 
 -- ---------------------------------------------------------
 -- HISTORIAL DE ESTADO
@@ -522,12 +596,57 @@ create table if not exists sim_status_history (
   id uuid primary key default gen_random_uuid(),
   sim_id uuid not null references sim_cards(id) on delete cascade,
   estado text not null check (estado in (
-    'Inactiva', 'Lista para activar', 'Activa', 'Desactivada temporal', 'Desactivada'
+    'Inactiva', 'Lista para activar', 'Activa', 'Sin número corto', 'Desactivada temporal', 'Desactivada'
   )),
+  estado_anterior text, -- el que tenía justo antes de este cambio (permite deshacer sin adivinar)
+  bulk_operation_id uuid, -- si este cambio vino de una operación masiva; FK se agrega más abajo
   changed_at timestamptz not null default now(),
   changed_by uuid not null references profiles(id),
   nota text
 );
+
+-- ---------------------------------------------------------
+-- OPERACIONES MASIVAS de cambio de estado — agrupa varios cambios hechos
+-- de una sola vez, para poder ver el historial completo y deshacerlas si
+-- se cargó mal la información.
+-- ---------------------------------------------------------
+create table if not exists bulk_operations (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  tipo text not null default 'cambio_estado', -- 'cambio_estado' o 'registro_entrega'
+  estado_nuevo text, -- solo aplica a 'cambio_estado'
+  cantidad_sims integer not null default 0,
+  nota text,
+  created_by uuid not null references profiles(id),
+  created_at timestamptz not null default now(),
+  revertida_at timestamptz,
+  revertida_by uuid references profiles(id)
+);
+
+alter table sim_status_history add constraint sim_status_history_bulk_operation_id_fkey
+  foreign key (bulk_operation_id) references bulk_operations(id) on delete set null;
+
+alter table sim_assignments add constraint sim_assignments_bulk_operation_id_fkey
+  foreign key (bulk_operation_id) references bulk_operations(id) on delete set null;
+alter table sim_assignments add constraint sim_assignments_ended_by_bulk_operation_id_fkey
+  foreign key (ended_by_bulk_operation_id) references bulk_operations(id) on delete set null;
+
+alter table bulk_operations enable row level security;
+
+create policy "read bulk operations same org" on bulk_operations for select
+  using (organization_id = current_org_id());
+create policy "insert bulk operations" on bulk_operations for insert
+  with check (organization_id = current_org_id() and tiene_modulo('inventario'));
+create policy "update bulk operations" on bulk_operations for update
+  using (organization_id = current_org_id() and tiene_modulo('inventario'))
+  with check (organization_id = current_org_id() and tiene_modulo('inventario'));
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='bulk_operations') then
+    alter publication supabase_realtime add table bulk_operations;
+  end if;
+end $$;
 
 create index if not exists idx_status_history_sim on sim_status_history (sim_id);
 
@@ -552,6 +671,9 @@ create table if not exists sim_assignments (
   broker_id uuid references profiles(id),
 
   fecha_entrega date not null,
+
+  bulk_operation_id uuid, -- si esta asignación se creó como parte de una entrega masiva/individual registrada
+  ended_by_bulk_operation_id uuid, -- si esta asignación se cerró porque una operación posterior la reemplazó (permite restaurarla al deshacer)
 
   assigned_at timestamptz not null default now(),
   ended_at timestamptz,
@@ -836,6 +958,25 @@ begin
   end if;
 end $$;
 
+-- Para que la campanita de alertas se actualice al instante cuando alguien
+-- marca una alerta como vista, o cuando cambia el estado de una SIM
+-- (se vence, se renueva, se desactiva).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'sim_alert_reads'
+  ) then
+    alter publication supabase_realtime add table sim_alert_reads;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'sim_status_history'
+  ) then
+    alter publication supabase_realtime add table sim_status_history;
+  end if;
+end $$;
+
 -- Bucket de almacenamiento para el comprobante de envío (imagen o PDF)
 insert into storage.buckets (id, name, public)
 values ('pedidos-comprobantes', 'pedidos-comprobantes', true)
@@ -873,6 +1014,116 @@ create policy "upload chat adjuntos" on storage.objects for insert
     and tiene_modulo('chat')
     and (storage.foldername(name))[1] = current_org_id()::text
   );
+
+-- ---------------------------------------------------------
+-- BITÁCORA de acciones administrativas sensibles (usuarios, organizaciones)
+-- que no quedan registradas en ninguna otra tabla con su propio historial.
+-- El módulo de Logs combina esto con lo que ya se registra en otras tablas
+-- (sim_status_history, sim_assignments, bulk_operations, clientes, pedidos,
+-- chat_groups) para armar el registro completo de actividad.
+-- ---------------------------------------------------------
+create table if not exists audit_log (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  user_id uuid not null references profiles(id),
+  accion text not null,
+  entidad text not null,
+  detalle text,
+  created_at timestamptz not null default now()
+);
+
+alter table audit_log enable row level security;
+
+create policy "super admin reads audit log" on audit_log for select
+  using (organization_id = current_org_id() and current_role_is_system());
+
+create policy "insert audit log" on audit_log for insert
+  with check (organization_id = current_org_id());
+
+-- ---------------------------------------------------------
+-- REASIGNACIÓN DE NÚMEROS CORTOS (Claro) — módulo dedicado
+-- Igual que sim_assignments, se necesitan estas dos columnas para poder
+-- "Deshacer" una reasignación masiva: bulk_operation_id marca el registro
+-- NUEVO que abrió esta operación; closed_by_bulk_operation_id marca el
+-- registro ANTERIOR que esta operación cerró (para poder reabrirlo al
+-- deshacer, sin perder el dato).
+-- ---------------------------------------------------------
+alter table sim_short_numbers add column if not exists bulk_operation_id uuid references bulk_operations(id) on delete set null;
+alter table sim_short_numbers add column if not exists closed_by_bulk_operation_id uuid references bulk_operations(id) on delete set null;
+
+create index if not exists idx_short_numbers_bulk_operation on sim_short_numbers (bulk_operation_id);
+create index if not exists idx_short_numbers_closed_by_bulk_operation on sim_short_numbers (closed_by_bulk_operation_id);
+
+-- ---------------------------------------------------------
+-- NÚMEROS CORTOS DISPONIBLES PARA REASIGNAR
+-- Por cada número corto que alguna vez existió en la organización, dice:
+--   - si hoy está asignado a una SIM (icc_actual, estado_actual, cliente_actual)
+--   - o si no tiene ningún ICC asignado en este momento (disponible = true)
+-- El proveedor se toma de la SIM que lo tiene hoy, o si nadie lo tiene, del
+-- último ICC que lo tuvo (para poder seguir filtrando "solo Claro" aunque
+-- el número ya no esté atado a ninguna SIM).
+-- ---------------------------------------------------------
+create or replace view sim_short_number_status_view
+with (security_invoker = true) as
+with numeros as (
+  select distinct organization_id, numero_corto from sim_short_numbers
+),
+tenedor_actual as (
+  select organization_id, numero_corto, sim_id
+  from sim_short_numbers
+  where unassigned_at is null
+),
+ultimo_historico as (
+  select organization_id, numero_corto, sim_id,
+    row_number() over (partition by organization_id, numero_corto order by assigned_at desc) as rn
+  from sim_short_numbers
+)
+select
+  n.organization_id,
+  n.numero_corto,
+  ta.sim_id                                       as sim_id_actual,
+  scv.icc                                         as icc_actual,
+  scv.estado_actual,
+  scv.cliente_actual,
+  coalesce(sc_actual.proveedor, sc_ultimo.proveedor) as proveedor,
+  (ta.sim_id is null)                              as disponible
+from numeros n
+left join tenedor_actual ta
+  on ta.organization_id = n.organization_id and ta.numero_corto = n.numero_corto
+left join sim_current_view scv on scv.id = ta.sim_id
+left join sim_cards sc_actual on sc_actual.id = ta.sim_id
+left join ultimo_historico uh
+  on uh.organization_id = n.organization_id and uh.numero_corto = n.numero_corto and uh.rn = 1
+left join sim_cards sc_ultimo on sc_ultimo.id = uh.sim_id;
+
+-- ---------------------------------------------------------
+-- NUEVO ESTADO: "Sin número corto"
+-- Una SIM Claro sin número corto asignado no se considera "Activa" de
+-- verdad. La tabla ya existe en producción, así que hay que reemplazar el
+-- CHECK (el `create table if not exists` de arriba no lo hace por sí solo
+-- en una tabla que ya existe).
+-- ---------------------------------------------------------
+alter table sim_status_history drop constraint if exists sim_status_history_estado_check;
+alter table sim_status_history add constraint sim_status_history_estado_check check (estado in (
+  'Inactiva', 'Lista para activar', 'Activa', 'Sin número corto', 'Desactivada temporal', 'Desactivada'
+));
+
+-- Backfill: las SIM Claro que HOY están "Activa" pero no tienen ningún
+-- número corto asignado pasan a "Sin número corto" — de una sola vez, con
+-- el estado anterior guardado para que "Deshacer" no aplique aquí (fue una
+-- corrección de datos, no una operación masiva reversible).
+insert into sim_status_history (sim_id, estado, estado_anterior, changed_by, nota)
+select
+  scv.id,
+  'Sin número corto',
+  'Activa',
+  sc.created_by, -- no hay un usuario "sistema" dedicado; se usa quien creó la SIM, que siempre existe (a diferencia del comercial, que solo aplica si ya tiene cliente)
+  'Corrección automática: esta SIM Claro está "Activa" pero no tiene número corto asignado.'
+from sim_current_view scv
+join sim_cards sc on sc.id = scv.id
+where scv.proveedor ilike 'claro'
+  and scv.estado_actual = 'Activa'
+  and scv.numero_corto_actual is null;
 
 -- Semilla inicial de proveedores de Nettz (puedes agregar/eliminar desde el panel)
 insert into providers (organization_id, name)
