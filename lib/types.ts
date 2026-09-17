@@ -129,6 +129,8 @@ export interface SimShortNumber {
   assigned_at: string;
   unassigned_at: string | null;
   assigned_by: string;
+  bulk_operation_id: string | null;
+  closed_by_bulk_operation_id: string | null;
 }
 
 export interface SimStatusHistory {
@@ -145,7 +147,7 @@ export interface SimStatusHistory {
 export interface BulkOperation {
   id: string;
   organization_id: string;
-  tipo: "cambio_estado" | "registro_entrega";
+  tipo: "cambio_estado" | "registro_entrega" | "reasignacion_numero";
   estado_nuevo: EstadoSim | null;
   cantidad_sims: number;
   nota: string | null;

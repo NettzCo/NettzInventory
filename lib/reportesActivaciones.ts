@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { traerTodasLasFilas } from "@/lib/simQueries";
 
 export interface FilaReporte {
   mes: string; // "2026-01"
@@ -51,28 +52,34 @@ export async function construirReportesActivaciones(
   organizationId: string,
   proveedoresIncluidos: string[]
 ): Promise<ReportesActivaciones> {
-  const [{ data: historial }, { data: entregasRaw }] = await Promise.all([
-    supabase
-      .from("sim_status_history")
-      .select("changed_at, estado, sim_cards!inner(proveedor, organization_id)")
-      .eq("sim_cards.organization_id", organizationId)
-      .in("estado", ["Activa", "Desactivada"]),
-    supabase
-      .from("sim_assignments")
-      .select("fecha_entrega, sim_cards!inner(proveedor, organization_id)")
-      .eq("sim_cards.organization_id", organizationId),
+  const [historial, entregasRaw] = await Promise.all([
+    traerTodasLasFilas<{ changed_at: string; estado: string; sim_cards: SimCardMini }>((d, h) =>
+      supabase
+        .from("sim_status_history")
+        .select("changed_at, estado, sim_cards!inner(proveedor, organization_id)")
+        .eq("sim_cards.organization_id", organizationId)
+        .in("estado", ["Activa", "Desactivada"])
+        .range(d, h) as unknown as PromiseLike<{ data: { changed_at: string; estado: string; sim_cards: SimCardMini }[] | null; error: { message: string } | null }>
+    ),
+    traerTodasLasFilas<{ fecha_entrega: string; sim_cards: SimCardMini }>((d, h) =>
+      supabase
+        .from("sim_assignments")
+        .select("fecha_entrega, sim_cards!inner(proveedor, organization_id)")
+        .eq("sim_cards.organization_id", organizationId)
+        .range(d, h) as unknown as PromiseLike<{ data: { fecha_entrega: string; sim_cards: SimCardMini }[] | null; error: { message: string } | null }>
+    ),
   ]);
 
   const filasActivacion: { fecha: string; proveedor: string }[] = [];
   const filasDesactivacion: { fecha: string; proveedor: string }[] = [];
 
-  for (const h of (historial ?? []) as unknown as { changed_at: string; estado: string; sim_cards: SimCardMini }[]) {
+  for (const h of historial) {
     const item = { fecha: h.changed_at.slice(0, 10), proveedor: h.sim_cards?.proveedor ?? "—" };
     if (h.estado === "Activa") filasActivacion.push(item);
     else if (h.estado === "Desactivada") filasDesactivacion.push(item);
   }
 
-  const filasEntregas = ((entregasRaw ?? []) as unknown as { fecha_entrega: string; sim_cards: SimCardMini }[]).map((e) => ({
+  const filasEntregas = entregasRaw.map((e) => ({
     fecha: e.fecha_entrega,
     proveedor: e.sim_cards?.proveedor ?? "—",
   }));
