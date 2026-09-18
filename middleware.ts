@@ -2,6 +2,22 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isPublic =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/_next");
+
+  // Las rutas públicas no necesitan que se valide la sesión contra
+  // Supabase — evitar por completo esa llamada de red aquí es lo que hace
+  // que /login (y las demás páginas públicas) carguen rápido incluso si
+  // Supabase está respondiendo lento en ese momento. Antes se llamaba a
+  // getUser() SIEMPRE, en cada solicitud, sin importar la ruta.
+  if (isPublic) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -27,27 +43,9 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
-  const isRecoveryRoute = request.nextUrl.pathname.startsWith("/reset-password");
-  const isPublic =
-    isAuthRoute ||
-    isRecoveryRoute ||
-    request.nextUrl.pathname.startsWith("/forgot-password") ||
-    request.nextUrl.pathname.startsWith("/_next");
-
-  if (!user && !isPublic) {
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  // /reset-password se visita con una sesión temporal de "recuperación" que
-  // Supabase crea al abrir el enlace del correo — no la tratamos como una
-  // sesión normal ya iniciada, para no redirigir al dashboard antes de que
-  // la persona defina su nueva contraseña.
-  if (user && isAuthRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

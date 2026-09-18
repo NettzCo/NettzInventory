@@ -767,7 +767,15 @@ create policy "platform update organizations" on organizations for update
 -- permiso de gestionar organizaciones puede leer cualquiera)
 create policy "read profiles same org" on profiles for select
   using (organization_id = current_org_id() or current_role_can_manage_orgs());
-create policy "update own profile" on profiles for update using (auth.uid() = id);
+-- "update own profile" se eliminó: no tenía "with check", así que dejaba
+-- cambiar CUALQUIER columna (role_id, organization_id, active) de la
+-- propia fila sin ninguna restricción — cualquier usuario autenticado
+-- podía autoascenderse a Super administrador con una llamada directa a la
+-- API de Supabase, sin pasar por la aplicación. Ninguna función real de
+-- la app la usaba: la gestión de perfiles ya se hace por completo desde
+-- una acción de servidor exclusiva para super administradores, con la
+-- llave de servicio (que ignora RLS a propósito, de forma controlada).
+drop policy if exists "update own profile" on profiles;
 
 -- Roles: se leen y administran dentro de la misma organización
 create policy "read roles same org" on roles for select
