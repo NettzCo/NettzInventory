@@ -11,5 +11,5 @@ export async function obtenerAlertasVistas(
     .select("sim_id, fecha_aniversario")
     .eq("user_id", userId);
 
-  return new Set((data ?? []).map((r) => llaveAlerta(r.sim_id, `${r.fecha_aniversario}T00:00:00`)));
+  return new Set((data ?? []).map((r) => llaveAlerta(r.sim_id, r.fecha_aniversario)));
 }
