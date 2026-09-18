@@ -19,6 +19,16 @@ export async function construirAlertasChat(
   const { data: misGruposRows } = await supabase.from("chat_group_members").select("group_id").eq("user_id", userId);
   const idsGrupos = (misGruposRows ?? []).map((g) => g.group_id as string);
 
+  // Sin este límite, esto traía TODO el historial de chat de la
+  // organización — sin importar cuán viejo — en cada carga de página de
+  // toda la app (este cálculo vive en el layout general). Con el chat ya
+  // acumulando historial, eso iba volviendo cada navegación más lenta con
+  // el tiempo. 30 días es más que suficiente para cualquier "no leído"
+  // razonable, y aprovecha el índice existente (organization_id, created_at).
+  const desde = new Date();
+  desde.setDate(desde.getDate() - 30);
+  const desdeIso = desde.toISOString();
+
   const consultas = [
     supabase
       .from("chat_messages")
@@ -27,6 +37,7 @@ export async function construirAlertasChat(
       .is("recipient_id", null)
       .is("group_id", null)
       .neq("sender_id", userId)
+      .gte("created_at", desdeIso)
       .order("created_at", { ascending: false }),
     supabase
       .from("chat_messages")
@@ -34,6 +45,7 @@ export async function construirAlertasChat(
       .eq("organization_id", organizationId)
       .eq("recipient_id", userId)
       .neq("sender_id", userId)
+      .gte("created_at", desdeIso)
       .order("created_at", { ascending: false }),
   ];
   if (idsGrupos.length > 0) {
@@ -44,6 +56,7 @@ export async function construirAlertasChat(
         .eq("organization_id", organizationId)
         .in("group_id", idsGrupos)
         .neq("sender_id", userId)
+        .gte("created_at", desdeIso)
         .order("created_at", { ascending: false })
     );
   }
