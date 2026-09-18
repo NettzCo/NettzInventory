@@ -1,4 +1,4 @@
- # Nettz · Inventario de SIM cards
+# Nettz · Inventario de SIM cards
 
 **Software:** Nettz Inventory · **Versión:** 1.0 · **Creador:** Mario Diaz · **Bogotá, Colombia**
 
