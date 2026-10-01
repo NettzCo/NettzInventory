@@ -510,6 +510,82 @@ create policy "delete own sim alert reads" on sim_alert_reads for delete
   using (user_id = auth.uid());
 
 -- ---------------------------------------------------------
+-- PAGOS ADELANTADOS
+-- Un cliente paga por adelantado (normalmente un año completo) por un
+-- grupo de SIM — cada pago queda con un número de comprobante correlativo,
+-- el comprobante que mandó el cliente (imagen/PDF) y, por cada SIM
+-- incluida, hasta qué fecha quedó renovada y cuánto se pagó por ella.
+-- ---------------------------------------------------------
+create table if not exists pagos_adelantados (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  numero_comprobante text not null,
+  cliente_nombre text not null,
+  fecha_pago date not null,
+  valor_total numeric not null check (valor_total >= 0),
+  comprobante_archivo_url text, -- lo que el cliente mandó como prueba de pago
+  nota text,
+  created_by uuid not null references profiles(id),
+  created_at timestamptz not null default now(),
+  unique (organization_id, numero_comprobante)
+);
+alter table pagos_adelantados enable row level security;
+
+create index if not exists idx_pagos_adelantados_org on pagos_adelantados (organization_id, fecha_pago desc);
+
+drop policy if exists "pagos select org" on pagos_adelantados;
+create policy "pagos select org" on pagos_adelantados for select
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos insert org" on pagos_adelantados;
+create policy "pagos insert org" on pagos_adelantados for insert
+  with check (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos update org" on pagos_adelantados;
+create policy "pagos update org" on pagos_adelantados for update
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
+
+create table if not exists pagos_adelantados_sims (
+  id uuid primary key default gen_random_uuid(),
+  pago_id uuid not null references pagos_adelantados(id) on delete cascade,
+  sim_id uuid not null references sim_cards(id) on delete cascade,
+  fecha_renovado_hasta date not null,
+  valor numeric not null check (valor >= 0),
+  created_at timestamptz not null default now()
+);
+alter table pagos_adelantados_sims enable row level security;
+
+create index if not exists idx_pagos_adelantados_sims_pago on pagos_adelantados_sims (pago_id);
+create index if not exists idx_pagos_adelantados_sims_sim on pagos_adelantados_sims (sim_id);
+
+drop policy if exists "pagos sims select org" on pagos_adelantados_sims;
+create policy "pagos sims select org" on pagos_adelantados_sims for select
+  using (
+    tiene_modulo('pagos')
+    and exists (select 1 from pagos_adelantados pa where pa.id = pago_id and pa.organization_id = current_org_id())
+  );
+drop policy if exists "pagos sims insert org" on pagos_adelantados_sims;
+create policy "pagos sims insert org" on pagos_adelantados_sims for insert
+  with check (
+    tiene_modulo('pagos')
+    and exists (select 1 from pagos_adelantados pa where pa.id = pago_id and pa.organization_id = current_org_id())
+  );
+
+-- Bucket para el comprobante que manda el cliente (captura de transferencia, etc.)
+insert into storage.buckets (id, name, public)
+values ('pagos-comprobantes', 'pagos-comprobantes', true)
+on conflict (id) do nothing;
+
+drop policy if exists "read pagos comprobantes" on storage.objects;
+create policy "read pagos comprobantes" on storage.objects for select
+  using (bucket_id = 'pagos-comprobantes');
+drop policy if exists "upload pagos comprobantes" on storage.objects;
+create policy "upload pagos comprobantes" on storage.objects for insert
+  with check (
+    bucket_id = 'pagos-comprobantes'
+    and tiene_modulo('pagos')
+    and (storage.foldername(name))[1] = current_org_id()::text
+  );
+
+-- ---------------------------------------------------------
 -- SIM CARDS (registro maestro por ICC, por organización — nunca se borra)
 -- ---------------------------------------------------------
 create table if not exists sim_cards (
@@ -596,7 +672,7 @@ create table if not exists sim_status_history (
   id uuid primary key default gen_random_uuid(),
   sim_id uuid not null references sim_cards(id) on delete cascade,
   estado text not null check (estado in (
-    'Inactiva', 'Lista para activar', 'Activa', 'Sin número corto', 'Desactivada temporal', 'Desactivada'
+    'Inactiva', 'Lista para activar', 'Activa', 'Desactivada temporal', 'Desactivada'
   )),
   estado_anterior text, -- el que tenía justo antes de este cambio (permite deshacer sin adivinar)
   bulk_operation_id uuid, -- si este cambio vino de una operación masiva; FK se agrega más abajo
@@ -767,15 +843,7 @@ create policy "platform update organizations" on organizations for update
 -- permiso de gestionar organizaciones puede leer cualquiera)
 create policy "read profiles same org" on profiles for select
   using (organization_id = current_org_id() or current_role_can_manage_orgs());
--- "update own profile" se eliminó: no tenía "with check", así que dejaba
--- cambiar CUALQUIER columna (role_id, organization_id, active) de la
--- propia fila sin ninguna restricción — cualquier usuario autenticado
--- podía autoascenderse a Super administrador con una llamada directa a la
--- API de Supabase, sin pasar por la aplicación. Ninguna función real de
--- la app la usaba: la gestión de perfiles ya se hace por completo desde
--- una acción de servidor exclusiva para super administradores, con la
--- llave de servicio (que ignora RLS a propósito, de forma controlada).
-drop policy if exists "update own profile" on profiles;
+create policy "update own profile" on profiles for update using (auth.uid() = id);
 
 -- Roles: se leen y administran dentro de la misma organización
 create policy "read roles same org" on roles for select
@@ -1047,91 +1115,6 @@ create policy "super admin reads audit log" on audit_log for select
 
 create policy "insert audit log" on audit_log for insert
   with check (organization_id = current_org_id());
-
--- ---------------------------------------------------------
--- REASIGNACIÓN DE NÚMEROS CORTOS (Claro) — módulo dedicado
--- Igual que sim_assignments, se necesitan estas dos columnas para poder
--- "Deshacer" una reasignación masiva: bulk_operation_id marca el registro
--- NUEVO que abrió esta operación; closed_by_bulk_operation_id marca el
--- registro ANTERIOR que esta operación cerró (para poder reabrirlo al
--- deshacer, sin perder el dato).
--- ---------------------------------------------------------
-alter table sim_short_numbers add column if not exists bulk_operation_id uuid references bulk_operations(id) on delete set null;
-alter table sim_short_numbers add column if not exists closed_by_bulk_operation_id uuid references bulk_operations(id) on delete set null;
-
-create index if not exists idx_short_numbers_bulk_operation on sim_short_numbers (bulk_operation_id);
-create index if not exists idx_short_numbers_closed_by_bulk_operation on sim_short_numbers (closed_by_bulk_operation_id);
-
--- ---------------------------------------------------------
--- NÚMEROS CORTOS DISPONIBLES PARA REASIGNAR
--- Por cada número corto que alguna vez existió en la organización, dice:
---   - si hoy está asignado a una SIM (icc_actual, estado_actual, cliente_actual)
---   - o si no tiene ningún ICC asignado en este momento (disponible = true)
--- El proveedor se toma de la SIM que lo tiene hoy, o si nadie lo tiene, del
--- último ICC que lo tuvo (para poder seguir filtrando "solo Claro" aunque
--- el número ya no esté atado a ninguna SIM).
--- ---------------------------------------------------------
-create or replace view sim_short_number_status_view
-with (security_invoker = true) as
-with numeros as (
-  select distinct organization_id, numero_corto from sim_short_numbers
-),
-tenedor_actual as (
-  select organization_id, numero_corto, sim_id
-  from sim_short_numbers
-  where unassigned_at is null
-),
-ultimo_historico as (
-  select organization_id, numero_corto, sim_id,
-    row_number() over (partition by organization_id, numero_corto order by assigned_at desc) as rn
-  from sim_short_numbers
-)
-select
-  n.organization_id,
-  n.numero_corto,
-  ta.sim_id                                       as sim_id_actual,
-  scv.icc                                         as icc_actual,
-  scv.estado_actual,
-  scv.cliente_actual,
-  coalesce(sc_actual.proveedor, sc_ultimo.proveedor) as proveedor,
-  (ta.sim_id is null)                              as disponible
-from numeros n
-left join tenedor_actual ta
-  on ta.organization_id = n.organization_id and ta.numero_corto = n.numero_corto
-left join sim_current_view scv on scv.id = ta.sim_id
-left join sim_cards sc_actual on sc_actual.id = ta.sim_id
-left join ultimo_historico uh
-  on uh.organization_id = n.organization_id and uh.numero_corto = n.numero_corto and uh.rn = 1
-left join sim_cards sc_ultimo on sc_ultimo.id = uh.sim_id;
-
--- ---------------------------------------------------------
--- NUEVO ESTADO: "Sin número corto"
--- Una SIM Claro sin número corto asignado no se considera "Activa" de
--- verdad. La tabla ya existe en producción, así que hay que reemplazar el
--- CHECK (el `create table if not exists` de arriba no lo hace por sí solo
--- en una tabla que ya existe).
--- ---------------------------------------------------------
-alter table sim_status_history drop constraint if exists sim_status_history_estado_check;
-alter table sim_status_history add constraint sim_status_history_estado_check check (estado in (
-  'Inactiva', 'Lista para activar', 'Activa', 'Sin número corto', 'Desactivada temporal', 'Desactivada'
-));
-
--- Backfill: las SIM Claro que HOY están "Activa" pero no tienen ningún
--- número corto asignado pasan a "Sin número corto" — de una sola vez, con
--- el estado anterior guardado para que "Deshacer" no aplique aquí (fue una
--- corrección de datos, no una operación masiva reversible).
-insert into sim_status_history (sim_id, estado, estado_anterior, changed_by, nota)
-select
-  scv.id,
-  'Sin número corto',
-  'Activa',
-  sc.created_by, -- no hay un usuario "sistema" dedicado; se usa quien creó la SIM, que siempre existe (a diferencia del comercial, que solo aplica si ya tiene cliente)
-  'Corrección automática: esta SIM Claro está "Activa" pero no tiene número corto asignado.'
-from sim_current_view scv
-join sim_cards sc on sc.id = scv.id
-where scv.proveedor ilike 'claro'
-  and scv.estado_actual = 'Activa'
-  and scv.numero_corto_actual is null;
 
 -- Semilla inicial de proveedores de Nettz (puedes agregar/eliminar desde el panel)
 insert into providers (organization_id, name)

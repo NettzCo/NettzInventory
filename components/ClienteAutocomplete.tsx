@@ -14,7 +14,6 @@ export default function ClienteAutocomplete({
   placeholder,
   required,
   className,
-  name,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -22,7 +21,6 @@ export default function ClienteAutocomplete({
   placeholder?: string;
   required?: boolean;
   className?: string;
-  name?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -36,13 +34,12 @@ export default function ClienteAutocomplete({
   }, []);
 
   const sugerencias = value.trim()
-    ? clientes.filter((c) => c.nombre.toLowerCase().includes(value.trim().toLowerCase())).slice(0, 50)
-    : clientes.slice(0, 50);
+    ? clientes.filter((c) => c.nombre.toLowerCase().includes(value.trim().toLowerCase())).slice(0, 8)
+    : clientes.slice(0, 8);
 
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
       <input
-        name={name}
         className={className ?? "input"}
         value={value}
         required={required}

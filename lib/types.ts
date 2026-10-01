@@ -14,7 +14,6 @@ export type EstadoSim =
   | "Inactiva"
   | "Lista para activar"
   | "Activa"
-  | "Sin número corto"
   | "Desactivada temporal"
   | "Desactivada"
   | "Vencida";
@@ -23,7 +22,6 @@ export const ESTADOS_SIM: EstadoSim[] = [
   "Inactiva",
   "Lista para activar",
   "Activa",
-  "Sin número corto",
   "Desactivada temporal",
   "Desactivada",
   "Vencida",
@@ -131,20 +129,6 @@ export interface SimShortNumber {
   assigned_at: string;
   unassigned_at: string | null;
   assigned_by: string;
-  bulk_operation_id: string | null;
-  closed_by_bulk_operation_id: string | null;
-}
-
-/** Fila de sim_short_number_status_view — usada en "Números disponibles". */
-export interface SimShortNumberStatus {
-  organization_id: string;
-  numero_corto: string;
-  sim_id_actual: string | null;
-  icc_actual: string | null;
-  estado_actual: EstadoSim | null;
-  cliente_actual: string | null;
-  proveedor: string | null;
-  disponible: boolean; // true = sin ningún ICC asignado hoy
 }
 
 export interface SimStatusHistory {
@@ -161,7 +145,7 @@ export interface SimStatusHistory {
 export interface BulkOperation {
   id: string;
   organization_id: string;
-  tipo: "cambio_estado" | "registro_entrega" | "reasignacion_numero";
+  tipo: "cambio_estado" | "registro_entrega";
   estado_nuevo: EstadoSim | null;
   cantidad_sims: number;
   nota: string | null;

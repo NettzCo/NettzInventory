@@ -11,6 +11,7 @@ export const MODULOS = [
   { key: "alertas", label: "Alertas" },
   { key: "clientes", label: "Clientes" },
   { key: "pedidos", label: "Pedidos" },
+  { key: "pagos", label: "Pagos adelantados" },
   { key: "chat", label: "Chat" },
   { key: "reportes", label: "Reportes" },
 ] as const;
