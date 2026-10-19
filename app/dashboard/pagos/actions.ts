@@ -214,9 +214,19 @@ export async function registrarPago(input: RegistrarPagoInput) {
 
 /** Sube el comprobante que mandó el cliente (captura de transferencia,
  *  etc.) y lo asocia al pago ya creado. */
-export async function subirComprobantePago(pagoId: string, formData: FormData) {
+export interface ArchivoPago {
+  id: string;
+  url: string;
+  nombre: string | null;
+  created_at: string;
+}
+
+/** Sube uno o varios archivos (fotos/capturas del pago) para un pago ya
+ *  registrado — se puede llamar tanto justo después de registrar el pago
+ *  como más adelante, al consultarlo (no hay límite de una sola vez). */
+export async function subirComprobantePago(pagoId: string, formData: FormData): Promise<{ error?: string; ok?: boolean; archivos?: ArchivoPago[] }> {
   try {
-    const { profile } = await requierePagos();
+    const { userId, profile } = await requierePagos();
 
     const supabase = await createClient();
     const { data: pago } = await supabase
@@ -226,31 +236,90 @@ export async function subirComprobantePago(pagoId: string, formData: FormData) {
       .maybeSingle();
     if (!pago || pago.organization_id !== profile.organization_id) return { error: "No se encontró el pago." };
 
-    const file = formData.get("file") as File | null;
-    if (!file) return { error: "No se recibió ningún archivo." };
-    if (file.size > 8 * 1024 * 1024) return { error: "El archivo no puede pesar más de 8 MB." };
-
-    const extension = file.name.split(".").pop() || "bin";
-    const ruta = `${profile.organization_id}/${pagoId}/${Date.now()}.${extension}`;
+    const files = formData.getAll("files") as File[];
+    if (!files.length) return { error: "No se recibió ningún archivo." };
+    for (const f of files) {
+      if (f.size > 8 * 1024 * 1024) return { error: `El archivo "${f.name}" pesa más de 8 MB.` };
+    }
 
     const admin = createAdminClient();
-    const { error: uploadError } = await admin.storage
-      .from("pagos-comprobantes")
-      .upload(ruta, await file.arrayBuffer(), { contentType: file.type, upsert: true });
-    if (uploadError) return { error: uploadError.message };
+    const archivosSubidos: ArchivoPago[] = [];
 
-    const { data: urlData } = admin.storage.from("pagos-comprobantes").getPublicUrl(ruta);
+    for (const file of files) {
+      const extension = file.name.split(".").pop() || "bin";
+      const ruta = `${profile.organization_id}/${pagoId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
 
-    const { error: errorUpdate } = await supabase
-      .from("pagos_adelantados")
-      .update({ comprobante_archivo_url: urlData.publicUrl })
-      .eq("id", pagoId);
-    if (errorUpdate) return { error: errorUpdate.message };
+      const { error: uploadError } = await admin.storage
+        .from("pagos-comprobantes")
+        .upload(ruta, await file.arrayBuffer(), { contentType: file.type, upsert: true });
+      if (uploadError) return { error: uploadError.message };
+
+      const { data: urlData } = admin.storage.from("pagos-comprobantes").getPublicUrl(ruta);
+
+      const { data: fila, error: errorInsert } = await supabase
+        .from("pagos_adelantados_archivos")
+        .insert({
+          pago_id: pagoId,
+          organization_id: profile.organization_id,
+          archivo_url: urlData.publicUrl,
+          nombre_original: file.name,
+          uploaded_by: userId,
+        })
+        .select("id, archivo_url, nombre_original, created_at")
+        .single();
+      if (errorInsert) return { error: errorInsert.message };
+
+      archivosSubidos.push({ id: fila.id, url: fila.archivo_url, nombre: fila.nombre_original, created_at: fila.created_at });
+    }
+
+    // Se mantiene también el campo viejo con el primer archivo, por
+    // compatibilidad con pantallas/exports que todavía lo lean.
+    if (archivosSubidos.length > 0) {
+      await supabase.from("pagos_adelantados").update({ comprobante_archivo_url: archivosSubidos[0].url }).eq("id", pagoId);
+    }
 
     revalidatePath("/dashboard/pagos");
-    return { ok: true, url: urlData.publicUrl };
+    return { ok: true, archivos: archivosSubidos };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo subir el comprobante. Intenta de nuevo." };
+  }
+}
+
+/** Todos los archivos (fotos/capturas) adjuntos a un pago, más recientes primero. */
+export async function obtenerArchivosPago(pagoId: string): Promise<ArchivoPago[] | { error: string }> {
+  try {
+    const { profile } = await requierePagos();
+    const supabase = await createClient();
+
+    const { data: pago } = await supabase.from("pagos_adelantados").select("organization_id").eq("id", pagoId).maybeSingle();
+    if (!pago || pago.organization_id !== profile.organization_id) return { error: "No se encontró el pago." };
+
+    const { data, error } = await supabase
+      .from("pagos_adelantados_archivos")
+      .select("id, archivo_url, nombre_original, created_at")
+      .eq("pago_id", pagoId)
+      .order("created_at", { ascending: false });
+    if (error) return { error: error.message };
+
+    return (data ?? []).map((a) => ({ id: a.id, url: a.archivo_url, nombre: a.nombre_original, created_at: a.created_at }));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudieron cargar los archivos." };
+  }
+}
+
+/** Quita un archivo adjunto (por si se subió el equivocado). */
+export async function eliminarArchivoPago(archivoId: string) {
+  try {
+    const { profile } = await requierePagos();
+    const supabase = await createClient();
+
+    const { error } = await supabase.from("pagos_adelantados_archivos").delete().eq("id", archivoId).eq("organization_id", profile.organization_id);
+    if (error) return { error: error.message };
+
+    revalidatePath("/dashboard/pagos");
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo quitar el archivo." };
   }
 }
 
@@ -271,6 +340,7 @@ export interface PagoListado {
   nota: string | null;
   creado_por_nombre: string | null;
   sims: { icc: string; fecha_renovado_hasta: string; valor: number }[];
+  archivos: ArchivoPago[];
 }
 
 export async function listarPagos(filtros: FiltrosPagos = {}): Promise<PagoListado[] | { error: string }> {
@@ -292,9 +362,21 @@ export async function listarPagos(filtros: FiltrosPagos = {}): Promise<PagoLista
     if (error) return { error: error.message };
 
     const ids = (pagos ?? []).map((p) => p.id);
-    const { data: lineas } = ids.length
-      ? await supabase.from("pagos_adelantados_sims").select("pago_id, fecha_renovado_hasta, valor, sim_cards(icc)").in("pago_id", ids)
-      : { data: [] };
+    const [{ data: lineas }, { data: archivosRows }] = await Promise.all([
+      ids.length
+        ? supabase.from("pagos_adelantados_sims").select("pago_id, fecha_renovado_hasta, valor, sim_cards(icc)").in("pago_id", ids)
+        : Promise.resolve({ data: [] }),
+      ids.length
+        ? supabase.from("pagos_adelantados_archivos").select("id, pago_id, archivo_url, nombre_original, created_at").in("pago_id", ids).order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const archivosPorPago = new Map<string, ArchivoPago[]>();
+    for (const a of archivosRows ?? []) {
+      const arr = archivosPorPago.get(a.pago_id) ?? [];
+      arr.push({ id: a.id, url: a.archivo_url, nombre: a.nombre_original, created_at: a.created_at });
+      archivosPorPago.set(a.pago_id, arr);
+    }
 
     const lineasPorPago = new Map<string, { icc: string; fecha_renovado_hasta: string; valor: number }[]>();
     for (const l of lineas ?? []) {
@@ -319,6 +401,7 @@ export async function listarPagos(filtros: FiltrosPagos = {}): Promise<PagoLista
         nota: p.nota,
         creado_por_nombre: Array.isArray(creador) ? creador[0]?.full_name : creador?.full_name ?? null,
         sims: lineasPorPago.get(p.id) ?? [],
+        archivos: archivosPorPago.get(p.id) ?? [],
       };
     });
 
@@ -373,6 +456,7 @@ export async function obtenerPagoParaComprobante(pagoId: string): Promise<PagoDe
       creado_por_nombre: null,
       organization_id: pago.organization_id,
       sims,
+      archivos: [], // el PDF del comprobante no necesita las fotos adjuntas
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo cargar el comprobante." };

@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import {
   buscarSimParaPago,
   registrarPago,
   subirComprobantePago,
+  obtenerArchivosPago,
+  eliminarArchivoPago,
   listarPagos,
   PagoListado,
   ItemPagoInput,
+  ArchivoPago,
 } from "./actions";
 import { traducirError } from "@/lib/friendlyError";
 import { formatFecha, formatMoneda, hoyColombia } from "@/lib/ui";
@@ -50,7 +53,8 @@ export default function PagosManager({
   const [isPending, startTransition] = useTransition();
   const [pagoCreado, setPagoCreado] = useState<{ id: string; numeroComprobante: string } | null>(null);
   const [subiendoComprobante, setSubiendoComprobante] = useState(false);
-  const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
+  const [archivosPago, setArchivosPago] = useState<ArchivoPago[]>([]);
+  const [pagoAbierto, setPagoAbierto] = useState<string | null>(null); // id del pago con el panel de archivos abierto en la tabla
 
   // --- Filtros de la tabla ---
   const [filtroCliente, setFiltroCliente] = useState("");
@@ -119,21 +123,21 @@ export default function PagosManager({
     });
   }
 
-  async function subirArchivo(file: File) {
+  async function subirArchivos(files: FileList) {
     if (!pagoCreado) return;
     setSubiendoComprobante(true);
     const fd = new FormData();
-    fd.append("file", file);
+    for (const file of Array.from(files)) fd.append("files", file);
     const res = await subirComprobantePago(pagoCreado.id, fd);
     setSubiendoComprobante(false);
     if (res.error) { setErrorForm(traducirError(res.error)); return; }
-    setComprobanteUrl(res.url ?? null);
+    setArchivosPago((prev) => [...(res.archivos ?? []), ...prev]);
   }
 
   function nuevoPago() {
     setMostrarFormulario(true);
     setPagoCreado(null);
-    setComprobanteUrl(null);
+    setArchivosPago([]);
     setClienteNombre("");
     setFechaPago(hoyColombia());
     setNota("");
@@ -302,16 +306,25 @@ export default function PagosManager({
                 </a>
 
                 <label className="rounded-lg border px-4 py-2.5 text-sm font-medium bg-white cursor-pointer" style={{ borderColor: "var(--border)" }}>
-                  {subiendoComprobante ? "Subiendo…" : comprobanteUrl ? "Comprobante del cliente adjunto ✓" : "Adjuntar comprobante del cliente"}
+                  {subiendoComprobante ? "Subiendo…" : "Adjuntar foto(s) del pago del cliente"}
                   <input
                     type="file"
                     accept="image/*,application/pdf"
+                    multiple
                     className="hidden"
                     disabled={subiendoComprobante}
-                    onChange={(e) => { const file = e.target.files?.[0]; if (file) subirArchivo(file); }}
+                    onChange={(e) => { if (e.target.files?.length) subirArchivos(e.target.files); e.target.value = ""; }}
                   />
                 </label>
               </div>
+
+              {archivosPago.length > 0 && (
+                <div className="flex flex-wrap gap-3 mb-4">
+                  {archivosPago.map((a) => (
+                    <GaleriaMiniatura key={a.id} archivo={a} onEliminar={() => setArchivosPago((prev) => prev.filter((x) => x.id !== a.id))} />
+                  ))}
+                </div>
+              )}
 
               <button onClick={nuevoPago} className="text-sm font-medium" style={{ color: "var(--ink-900)" }}>
                 + Registrar otro pago
@@ -369,13 +382,9 @@ export default function PagosManager({
                 </td>
                 <td className="px-4 py-3">{formatMoneda(p.valor_total)}</td>
                 <td className="px-4 py-3">
-                  {p.comprobante_archivo_url ? (
-                    <a href={p.comprobante_archivo_url} target="_blank" rel="noreferrer" className="hover:underline" style={{ color: "var(--ink-900)" }}>
-                      Ver archivo
-                    </a>
-                  ) : (
-                    <span style={{ color: "var(--text-muted)" }}>—</span>
-                  )}
+                  <button onClick={() => setPagoAbierto(p.id)} className="hover:underline" style={{ color: p.archivos.length > 0 ? "var(--ink-900)" : "var(--text-muted)" }}>
+                    {p.archivos.length > 0 ? `${p.archivos.length} foto${p.archivos.length === 1 ? "" : "s"}` : "+ Adjuntar"}
+                  </button>
                 </td>
                 <td className="px-4 py-3">
                   <a href={`/dashboard/pagos/comprobante/${p.id}`} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline" style={{ color: "var(--ink-900)" }}>
@@ -395,6 +404,16 @@ export default function PagosManager({
         </table>
       </div>
 
+      {pagoAbierto && (
+        <PanelArchivosPago
+          pagoId={pagoAbierto}
+          onCerrar={() => {
+            setPagoAbierto(null);
+            listarPagos().then((actualizados) => { if (!("error" in actualizados)) setPagos(actualizados); });
+          }}
+        />
+      )}
+
       <style jsx global>{`
         .input { width: 100%; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.55rem 0.75rem; font-size: 0.875rem; }
       `}</style>
@@ -404,4 +423,111 @@ export default function PagosManager({
 
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-4 py-3 font-medium text-xs uppercase tracking-wide">{children}</th>;
+}
+
+/** Una miniatura de archivo adjunto (imagen o ícono si es PDF), con botón
+ *  para quitarla. Se usa tanto justo al registrar como al consultar
+ *  después un pago ya existente. */
+function GaleriaMiniatura({ archivo, onEliminar }: { archivo: ArchivoPago; onEliminar: () => void }) {
+  const [eliminando, setEliminando] = useState(false);
+  const esPdf = archivo.nombre?.toLowerCase().endsWith(".pdf") || archivo.url.toLowerCase().endsWith(".pdf");
+
+  function quitar() {
+    if (!confirm("¿Quitar este archivo?")) return;
+    setEliminando(true);
+    eliminarArchivoPago(archivo.id).then((res) => {
+      setEliminando(false);
+      if (!res.error) onEliminar();
+    });
+  }
+
+  return (
+    <div className="relative group" style={{ width: "5.5rem" }}>
+      <a href={archivo.url} target="_blank" rel="noreferrer" className="block rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", width: "5.5rem", height: "5.5rem" }}>
+        {esPdf ? (
+          <div className="w-full h-full flex items-center justify-center text-xs font-semibold" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
+            PDF
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element -- viene de Supabase Storage
+          <img src={archivo.url} alt={archivo.nombre ?? "Comprobante"} className="w-full h-full object-cover" />
+        )}
+      </a>
+      <button
+        onClick={quitar}
+        disabled={eliminando}
+        title="Quitar"
+        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center"
+        style={{ background: "var(--state-desactivada)", color: "white" }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** Panel para VER y AGREGAR archivos de un pago ya registrado (se abre
+ *  desde la tabla de pagos, al "consultarlo" más adelante). */
+function PanelArchivosPago({ pagoId, onCerrar }: { pagoId: string; onCerrar: () => void }) {
+  const [archivos, setArchivos] = useState<ArchivoPago[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    obtenerArchivosPago(pagoId).then((res) => {
+      setCargando(false);
+      if ("error" in res) setError(traducirError(res.error));
+      else setArchivos(res);
+    });
+  }, [pagoId]);
+
+  function subir(files: FileList) {
+    setSubiendo(true);
+    setError(null);
+    const fd = new FormData();
+    for (const file of Array.from(files)) fd.append("files", file);
+    subirComprobantePago(pagoId, fd).then((res) => {
+      setSubiendo(false);
+      if (res.error) { setError(traducirError(res.error)); return; }
+      setArchivos((prev) => [...(res.archivos ?? []), ...prev]);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onCerrar}>
+      <div className="rounded-xl bg-white p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display text-base font-semibold">Fotos del pago</h3>
+          <button onClick={onCerrar} className="text-sm" style={{ color: "var(--text-secondary)" }}>Cerrar</button>
+        </div>
+
+        {error && <p className="text-sm mb-3" style={{ color: "var(--state-desactivada)" }}>{error}</p>}
+
+        <label className="inline-block rounded-lg border px-4 py-2.5 text-sm font-medium bg-white cursor-pointer mb-4" style={{ borderColor: "var(--border)" }}>
+          {subiendo ? "Subiendo…" : "+ Agregar foto(s)"}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            disabled={subiendo}
+            onChange={(e) => { if (e.target.files?.length) subir(e.target.files); e.target.value = ""; }}
+          />
+        </label>
+
+        {cargando ? (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Cargando…</p>
+        ) : archivos.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Todavía no hay fotos adjuntas a este pago.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {archivos.map((a) => (
+              <GaleriaMiniatura key={a.id} archivo={a} onEliminar={() => setArchivos((prev) => prev.filter((x) => x.id !== a.id))} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

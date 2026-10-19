@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ChatMessage } from "@/lib/types";
 import { enviarMensaje, marcarChatLeido, crearGrupo, editarGrupo, eliminarGrupo, subirAdjuntoChat, buscarMensajesChat, AdjuntoChat } from "./actions";
+import { obtenerAlertasChatLive } from "../alertas/liveActions";
+import { AlertaChat } from "@/lib/chatAlerts";
 import { traducirError } from "@/lib/friendlyError";
 
 interface Contacto {
@@ -52,7 +54,10 @@ export default function ChatWindow({
   const [otroLeidoHasta, setOtroLeidoHasta] = useState<string | null>(null);
   const [mencionActiva, setMencionActiva] = useState<{ inicio: number; filtro: string } | null>(null);
   const [gestionAbierta, setGestionAbierta] = useState<"nuevo" | string | null>(null); // string = id de grupo a editar
+  const [verMiembrosDe, setVerMiembrosDe] = useState<string | null>(null); // id del grupo, solo lectura
   const [usuariosEnLinea, setUsuariosEnLinea] = useState<Set<string>>(new Set());
+  // Clave = "general" | id del otro usuario | "grupo:<id>" → cuántos sin leer.
+  const [noLeidos, setNoLeidos] = useState<Map<string, number>>(new Map());
   const [isPending, startTransition] = useTransition();
   const [arrastrando, setArrastrando] = useState(false);
   const [subiendoAdjunto, setSubiendoAdjunto] = useState(false);
@@ -134,6 +139,41 @@ export default function ChatWindow({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccion, organizationId, currentUserId]);
+
+  // Mapa de "no leídos" para resaltar en la lista (canal general, grupos,
+  // directos) qué conversaciones tienen mensajes nuevos — se recalcula
+  // solo, en tiempo real, cuando llega un mensaje nuevo de cualquiera o
+  // cuando esta persona marca algo como leído (acá o en otra pestaña).
+  useEffect(() => {
+    const supabase = createClient();
+    let activo = true;
+
+    async function refrescarNoLeidos() {
+      const alertas = await obtenerAlertasChatLive();
+      if (!activo) return;
+      setNoLeidos(new Map(alertas.map((a: AlertaChat) => [a.conversacion, a.cantidad])));
+    }
+    refrescarNoLeidos();
+
+    const canal = supabase
+      .channel(`chat-noleidos-${organizationId}-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages", filter: `organization_id=eq.${organizationId}` },
+        () => { void refrescarNoLeidos(); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_reads", filter: `user_id=eq.${currentUserId}` },
+        () => { void refrescarNoLeidos(); }
+      )
+      .subscribe();
+
+    return () => {
+      activo = false;
+      supabase.removeChannel(canal);
+    };
+  }, [organizationId, currentUserId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -411,11 +451,12 @@ export default function ChatWindow({
               style={{
                 borderColor: "var(--border)",
                 background: esGeneral ? "var(--bg)" : "transparent",
-                fontWeight: esGeneral ? 600 : 400,
+                fontWeight: (noLeidos.get("general") ?? 0) > 0 ? 700 : esGeneral ? 600 : 400,
               }}
             >
               <span className="w-2 h-2 rounded-full" style={{ background: "var(--chip-gold)" }} />
-              Canal general
+              <span className="flex-1">Canal general</span>
+              <BadgeNoLeidos cantidad={noLeidos.get("general") ?? 0} />
             </button>
 
             <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
@@ -437,14 +478,19 @@ export default function ChatWindow({
               >
                 <button
                   onClick={() => setSeleccion(`${GRUPO_PREFIJO}${g.id}`)}
-                  className="flex-1 text-left px-4 py-3 text-sm"
-                  style={{ fontWeight: seleccion === `${GRUPO_PREFIJO}${g.id}` ? 600 : 400 }}
+                  className="flex-1 text-left px-4 py-3 text-sm flex items-center gap-2"
+                  style={{ fontWeight: (noLeidos.get(`${GRUPO_PREFIJO}${g.id}`) ?? 0) > 0 ? 700 : seleccion === `${GRUPO_PREFIJO}${g.id}` ? 600 : 400 }}
                 >
-                  # {g.name}
+                  <span className="flex-1"># {g.name}</span>
+                  <BadgeNoLeidos cantidad={noLeidos.get(`${GRUPO_PREFIJO}${g.id}`) ?? 0} />
                 </button>
-                {esSuperAdmin && (
+                {esSuperAdmin ? (
                   <button onClick={() => setGestionAbierta(g.id)} className="px-2 text-xs hover:underline cursor-pointer" style={{ color: "var(--text-muted)" }}>
                     Editar
+                  </button>
+                ) : (
+                  <button onClick={() => setVerMiembrosDe(g.id)} className="px-2 text-xs hover:underline cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                    Miembros
                   </button>
                 )}
               </div>
@@ -474,7 +520,8 @@ export default function ChatWindow({
                   }}
                   title={usuariosEnLinea.has(c.id) ? "En línea" : "Desconectado"}
                 />
-                {c.full_name}
+                <span className="flex-1" style={{ fontWeight: (noLeidos.get(c.id) ?? 0) > 0 ? 700 : undefined }}>{c.full_name}</span>
+                <BadgeNoLeidos cantidad={noLeidos.get(c.id) ?? 0} />
               </button>
             ))}
           </>
@@ -492,6 +539,14 @@ export default function ChatWindow({
           onCerrar={() => setGestionAbierta(null)}
           onListo={(idGrupo) => { setGestionAbierta(null); setSeleccion(`${GRUPO_PREFIJO}${idGrupo}`); router.refresh(); }}
           onEliminado={() => { setGestionAbierta(null); setSeleccion("general"); router.refresh(); }}
+        />
+      ) : verMiembrosDe ? (
+        <VerMiembrosGrupo
+          nombreGrupo={nombreGrupoPorId.get(verMiembrosDe) ?? "Grupo"}
+          miembros={miembrosPorGrupo[verMiembrosDe] ?? []}
+          todosUsuarios={todosUsuarios}
+          currentUserId={currentUserId}
+          onCerrar={() => setVerMiembrosDe(null)}
         />
       ) : (
         <div
@@ -635,6 +690,50 @@ export default function ChatWindow({
   );
 }
 
+/** Vista de solo lectura de quiénes son miembros de un grupo — cualquiera
+ *  puede verla; solo el super administrador puede editar (botón
+ *  "Editar", que abre GestionGrupo en vez de esto). */
+function VerMiembrosGrupo({
+  nombreGrupo,
+  miembros,
+  todosUsuarios,
+  currentUserId,
+  onCerrar,
+}: {
+  nombreGrupo: string;
+  miembros: string[];
+  todosUsuarios: Contacto[];
+  currentUserId: string;
+  onCerrar: () => void;
+}) {
+  const nombresMiembros = todosUsuarios.filter((u) => miembros.includes(u.id));
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0 p-6 overflow-y-auto">
+      <h2 className="font-display text-lg font-semibold mb-1"># {nombreGrupo}</h2>
+      <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
+        {nombresMiembros.length} miembro{nombresMiembros.length === 1 ? "" : "s"}
+      </p>
+
+      <div className="flex flex-col gap-1.5 mb-4 max-w-sm">
+        {nombresMiembros.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Este grupo no tiene miembros.</p>
+        ) : (
+          nombresMiembros.map((u) => (
+            <div key={u.id} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg" style={{ background: "var(--bg)" }}>
+              {u.full_name} {u.id === currentUserId && "(tú)"}
+            </div>
+          ))
+        )}
+      </div>
+
+      <button onClick={onCerrar} className="rounded-lg border px-4 py-2 text-sm font-medium hover:underline cursor-pointer self-start" style={{ borderColor: "var(--border)" }}>
+        Cerrar
+      </button>
+    </div>
+  );
+}
+
 function GestionGrupo({
   grupoId,
   nombreInicial,
@@ -731,5 +830,19 @@ function GestionGrupo({
         )}
       </div>
     </div>
+  );
+}
+
+/** Pequeña insignia dorada con el número de mensajes sin leer — no
+ *  muestra nada si no hay ninguno. */
+function BadgeNoLeidos({ cantidad }: { cantidad: number }) {
+  if (cantidad <= 0) return null;
+  return (
+    <span
+      className="text-xs font-semibold rounded-full px-1.5 py-0.5 flex-shrink-0"
+      style={{ background: "var(--chip-gold)", color: "var(--ink-950)", minWidth: "1.25rem", textAlign: "center" }}
+    >
+      {cantidad > 99 ? "99+" : cantidad}
+    </span>
   );
 }

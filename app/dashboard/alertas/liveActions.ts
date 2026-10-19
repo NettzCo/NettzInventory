@@ -27,6 +27,15 @@ export async function obtenerAlertasChatLive(): Promise<AlertaChat[]> {
   return construirAlertasChat(supabase, userId, profile.organization_id);
 }
 
+/** Total de mensajes sin leer (sumando todas las conversaciones: general,
+ *  directos y grupos) — para el aviso junto a "Chat" en el menú lateral. */
+export async function obtenerConteoChatNoLeido(): Promise<number> {
+  const { userId, profile } = await getCurrentProfile();
+  const supabase = await createClient();
+  const alertasChat = await construirAlertasChat(supabase, userId, profile.organization_id);
+  return alertasChat.reduce((total, a) => total + a.cantidad, 0);
+}
+
 export async function obtenerAlertasPedidosLive(): Promise<AlertaPedido[]> {
   const { userId, profile } = await getCurrentProfile();
   const supabase = await createClient();

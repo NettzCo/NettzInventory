@@ -11,48 +11,76 @@ export interface AlertaChat {
   ultimaFecha: string;
 }
 
+// Tope de seguridad: no hace falta mirar más atrás de esto para contar no
+// leídos (si alguien no entra al chat en 90 días, igual se le muestra que
+// tiene pendientes, solo que el conteo exacto se limita a esta ventana).
+const DIAS_TOPE_SIN_LEER = 90;
+
 export async function construirAlertasChat(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   organizationId: string
 ): Promise<AlertaChat[]> {
-  const { data: misGruposRows } = await supabase.from("chat_group_members").select("group_id").eq("user_id", userId);
+  // IMPORTANTE para el rendimiento: esta función corre en CADA navegación
+  // (vive en el layout compartido del dashboard). Antes traía TODO el
+  // historial completo de mensajes (canal general + cada directo + cada
+  // grupo) sin límite, cada vez — con meses de chat acumulado, eso hacía
+  // cada clic cada vez más lento. Ahora se acota a mensajes recientes
+  // (desde la lectura más vieja registrada, o un tope de 90 días si nunca
+  // se ha leído nada) y con un límite duro de filas, usando solo las
+  // columnas que realmente hacen falta.
+  const [{ data: misGruposRows }, { data: reads }] = await Promise.all([
+    supabase.from("chat_group_members").select("group_id").eq("user_id", userId),
+    supabase.from("chat_reads").select("*").eq("user_id", userId),
+  ]);
   const idsGrupos = (misGruposRows ?? []).map((g) => g.group_id as string);
+
+  const lecturas = (reads ?? []).map((r) => r.last_read_at as string);
+  const topeFallback = new Date(Date.now() - DIAS_TOPE_SIN_LEER * 24 * 60 * 60 * 1000).toISOString();
+  const fechaCorte = lecturas.length > 0 ? lecturas.reduce((min, d) => (d < min ? d : min), lecturas[0]) : topeFallback;
+
+  const COLUMNAS = "id, sender_id, recipient_id, group_id, body, created_at";
+  const LIMITE_POR_CONVERSACION = 300; // tope duro, por si alguna conversación igual tiene muchísimos mensajes recientes
 
   const consultas = [
     supabase
       .from("chat_messages")
-      .select("*")
+      .select(COLUMNAS)
       .eq("organization_id", organizationId)
       .is("recipient_id", null)
       .is("group_id", null)
       .neq("sender_id", userId)
-      .order("created_at", { ascending: false }),
+      .gte("created_at", fechaCorte)
+      .order("created_at", { ascending: false })
+      .limit(LIMITE_POR_CONVERSACION),
     supabase
       .from("chat_messages")
-      .select("*")
+      .select(COLUMNAS)
       .eq("organization_id", organizationId)
       .eq("recipient_id", userId)
       .neq("sender_id", userId)
-      .order("created_at", { ascending: false }),
+      .gte("created_at", fechaCorte)
+      .order("created_at", { ascending: false })
+      .limit(LIMITE_POR_CONVERSACION),
   ];
   if (idsGrupos.length > 0) {
     consultas.push(
       supabase
         .from("chat_messages")
-        .select("*")
+        .select(COLUMNAS)
         .eq("organization_id", organizationId)
         .in("group_id", idsGrupos)
         .neq("sender_id", userId)
+        .gte("created_at", fechaCorte)
         .order("created_at", { ascending: false })
+        .limit(LIMITE_POR_CONVERSACION)
     );
   }
 
   const [{ data: generales }, { data: directos }, gruposResult] = await Promise.all(consultas);
   const deGrupos = idsGrupos.length > 0 ? (gruposResult as { data: ChatMessage[] | null }).data : [];
 
-  const [{ data: reads }, { data: perfiles }, { data: gruposInfo }] = await Promise.all([
-    supabase.from("chat_reads").select("*").eq("user_id", userId),
+  const [{ data: perfiles }, { data: gruposInfo }] = await Promise.all([
     supabase.from("profiles").select("id, full_name").eq("organization_id", organizationId),
     idsGrupos.length > 0
       ? supabase.from("chat_groups").select("id, name").in("id", idsGrupos)

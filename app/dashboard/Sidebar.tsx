@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/branding";
 import { tieneModulo, ModuloKey } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/client";
-import { obtenerConteoAlertas } from "./alertas/liveActions";
+import { obtenerConteoAlertas, obtenerConteoChatNoLeido } from "./alertas/liveActions";
 import { logout } from "./actions";
 
 const NAV_ITEMS: { key: ModuloKey; href: string; label: string; icon: () => React.ReactElement }[] = [
@@ -26,6 +26,7 @@ export default function Sidebar({
   puedeGestionarOrganizaciones,
   modulos,
   alertCount: alertCountInicial,
+  chatUnreadCount: chatUnreadCountInicial,
   orgNombre,
   orgLogoUrl,
   organizationId,
@@ -37,6 +38,7 @@ export default function Sidebar({
   puedeGestionarOrganizaciones: boolean;
   modulos: string[];
   alertCount: number;
+  chatUnreadCount: number;
   orgNombre: string;
   orgLogoUrl: string | null;
   organizationId: string;
@@ -44,6 +46,7 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const [alertCount, setAlertCount] = useState(alertCountInicial);
+  const [chatUnreadCount, setChatUnreadCount] = useState(chatUnreadCountInicial);
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
   // Si el layout recalcula el conteo del lado del servidor (por ejemplo,
@@ -53,6 +56,10 @@ export default function Sidebar({
   useEffect(() => {
     setAlertCount(alertCountInicial);
   }, [alertCountInicial]);
+
+  useEffect(() => {
+    setChatUnreadCount(chatUnreadCountInicial);
+  }, [chatUnreadCountInicial]);
 
   // Escucha en tiempo real: cualquier mensaje de chat nuevo en la organización,
   // cualquier cambio en "hasta dónde leíste" (propio, puede venir de otra
@@ -64,8 +71,9 @@ export default function Sidebar({
     const supabase = createClient();
 
     async function refrescar() {
-      const nuevo = await obtenerConteoAlertas();
+      const [nuevo, nuevoChat] = await Promise.all([obtenerConteoAlertas(), obtenerConteoChatNoLeido()]);
       setAlertCount(nuevo);
+      setChatUnreadCount(nuevoChat);
     }
 
     const canal = supabase
@@ -175,6 +183,14 @@ export default function Sidebar({
                     style={{ background: "var(--chip-gold)", color: "var(--ink-950)" }}
                   >
                     {alertCount}
+                  </span>
+                )}
+                {item.href === "/dashboard/chat" && chatUnreadCount > 0 && (
+                  <span
+                    className="text-xs font-semibold rounded-full px-2 py-0.5"
+                    style={{ background: "var(--chip-gold)", color: "var(--ink-950)" }}
+                  >
+                    {chatUnreadCount}
                   </span>
                 )}
               </Link>

@@ -94,7 +94,7 @@ export function calcularAlertas(
  * ACTUALMENTE activas y cuya alerta todavía no fue marcada como vista.
  */
 export function contarAlertasActivas(
-  sims: SimCurrentView[],
+  sims: Pick<SimCurrentView, "id" | "tipo_plan" | "estado_actual" | "fecha_entrega" | "duracion_meses">[],
   vistas: Set<string> = new Set(),
   umbralDias: number = DIAS_ALERTA_DEFAULT
 ): number {

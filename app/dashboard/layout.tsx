@@ -23,6 +23,7 @@ export default async function DashboardLayout({
     construirAlertasPedidos(supabase, userId, profile.organization_id),
     obtenerAlertasVistas(supabase, userId),
   ]);
+  const chatUnreadCount = alertasChat.reduce((total, a) => total + a.cantidad, 0);
   const alertCount = contarAlertasActivas(sims, vistas) + alertasChat.length + alertasPedidos.length;
 
   // Cada organización tiene sus propios 2 colores (Configuración →
@@ -52,6 +53,7 @@ export default async function DashboardLayout({
         puedeGestionarOrganizaciones={profile.puede_gestionar_organizaciones}
         modulos={profile.modulos}
         alertCount={alertCount}
+        chatUnreadCount={chatUnreadCount}
         orgNombre={profile.org_nombre}
         orgLogoUrl={profile.org_logo_url}
         organizationId={profile.organization_id}

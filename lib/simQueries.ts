@@ -38,20 +38,27 @@ export async function traerInventarioCompleto(supabase: Awaited<ReturnType<typeo
  * ejecuta en CADA navegación) para no tener que traer el inventario
  * completo una y otra vez solo para contar alertas.
  */
-export async function traerSimsPrepagoActivas(supabase: Awaited<ReturnType<typeof createClient>>): Promise<SimCurrentView[]> {
+export type SimParaAlertas = Pick<SimCurrentView, "id" | "tipo_plan" | "estado_actual" | "fecha_entrega" | "duracion_meses">;
+
+export async function traerSimsPrepagoActivas(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<SimParaAlertas[]> {
   const PAGINA = 1000;
-  const todas: SimCurrentView[] = [];
+  const todas: SimParaAlertas[] = [];
   let desde = 0;
 
+  // Solo se piden las columnas que contarAlertasActivas realmente usa — no
+  // las ~20 columnas de la vista completa (con sus joins a cliente,
+  // comercial, broker, etc.), que no hacen falta solo para contar.
   while (true) {
     const { data } = await supabase
       .from("sim_current_view")
-      .select("*")
+      .select("id, tipo_plan, estado_actual, fecha_entrega, duracion_meses")
       .eq("estado_actual", "Activa")
       .eq("tipo_plan", "Prepago")
       .range(desde, desde + PAGINA - 1);
     if (!data || data.length === 0) break;
-    todas.push(...(data as SimCurrentView[]));
+    todas.push(...data);
     if (data.length < PAGINA) break;
     desde += PAGINA;
   }

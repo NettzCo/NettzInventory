@@ -43,10 +43,12 @@ export default async function ChatPage({
       .filter((g): g is { id: string; name: string } => g !== null);
   }
 
-  // Para el super administrador: quiénes son miembros de cada grupo, para
-  // poder prellenar el formulario al editar.
+  // Quiénes son miembros de cada grupo — el super administrador lo usa
+  // para prellenar el formulario al editar (agregar/quitar), y cualquier
+  // otro miembro del grupo lo usa para poder VER quiénes son (solo
+  // lectura, sin poder cambiarlo).
   const miembrosPorGrupo: Record<string, string[]> = {};
-  if (profile.role_es_sistema && grupos.length > 0) {
+  if (grupos.length > 0) {
     const { data: miembrosRows } = await supabase
       .from("chat_group_members")
       .select("group_id, user_id")

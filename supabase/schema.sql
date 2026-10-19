@@ -392,6 +392,10 @@ create table if not exists chat_messages (
 create index if not exists idx_chat_org_created on chat_messages (organization_id, created_at);
 create index if not exists idx_chat_dm on chat_messages (sender_id, recipient_id);
 create index if not exists idx_chat_group on chat_messages (group_id);
+-- Para la consulta de "mis mensajes directos recibidos recientes" (filtra
+-- por recipient_id + rango de fecha) — el índice de arriba (sender_id,
+-- recipient_id) no sirve para esto porque no filtra por sender_id.
+create index if not exists idx_chat_recipient_created on chat_messages (recipient_id, created_at);
 
 -- ---------------------------------------------------------
 -- GRUPOS de chat — solo el super administrador los crea, nombra, edita
@@ -576,6 +580,35 @@ create policy "pagos sims insert org" on pagos_adelantados_sims for insert
     tiene_modulo('pagos')
     and exists (select 1 from pagos_adelantados pa where pa.id = pago_id and pa.organization_id = current_org_id())
   );
+
+-- ---------------------------------------------------------
+-- VARIOS archivos (fotos/capturas) de comprobante por pago — reemplaza el
+-- límite de un solo archivo de `comprobante_archivo_url` (que se deja ahí
+-- por compatibilidad, pero ya no es la forma principal). Se puede adjuntar
+-- tanto al registrar el pago como después, al consultarlo.
+-- ---------------------------------------------------------
+create table if not exists pagos_adelantados_archivos (
+  id uuid primary key default gen_random_uuid(),
+  pago_id uuid not null references pagos_adelantados(id) on delete cascade,
+  organization_id uuid not null references organizations(id) on delete cascade,
+  archivo_url text not null,
+  nombre_original text,
+  uploaded_by uuid not null references profiles(id),
+  created_at timestamptz not null default now()
+);
+alter table pagos_adelantados_archivos enable row level security;
+
+create index if not exists idx_pagos_archivos_pago on pagos_adelantados_archivos (pago_id, created_at);
+
+drop policy if exists "pagos archivos select org" on pagos_adelantados_archivos;
+create policy "pagos archivos select org" on pagos_adelantados_archivos for select
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos archivos insert org" on pagos_adelantados_archivos;
+create policy "pagos archivos insert org" on pagos_adelantados_archivos for insert
+  with check (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos archivos delete org" on pagos_adelantados_archivos;
+create policy "pagos archivos delete org" on pagos_adelantados_archivos for delete
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
 
 -- Bucket para el comprobante que manda el cliente (captura de transferencia, etc.)
 insert into storage.buckets (id, name, public)
