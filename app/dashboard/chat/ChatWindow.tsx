@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ChatMessage } from "@/lib/types";
 import { enviarMensaje, marcarChatLeido, crearGrupo, editarGrupo, eliminarGrupo, subirAdjuntoChat, buscarMensajesChat, AdjuntoChat } from "./actions";
-import { traducirError } from "@/lib/friendlyError";
 
 interface Contacto {
   id: string;
@@ -668,11 +667,11 @@ function GestionGrupo({
     startTransition(async () => {
       if (grupoId) {
         const res = await editarGrupo(grupoId, nombre, miembros);
-        if (res?.error) { setError(traducirError(res.error)); return; }
+        if (res?.error) { setError(res.error); return; }
         onListo(grupoId);
       } else {
         const res = await crearGrupo(nombre, miembros);
-        if (res?.error) { setError(traducirError(res.error)); return; }
+        if (res?.error) { setError(res.error); return; }
         onListo(res.id as string);
       }
     });
@@ -684,7 +683,7 @@ function GestionGrupo({
     setError(null);
     startTransition(async () => {
       const res = await eliminarGrupo(grupoId);
-      if (res?.error) { setError(traducirError(res.error)); return; }
+      if (res?.error) { setError(res.error); return; }
       onEliminado();
     });
   }

@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { Profile, RoleRow } from "@/lib/types";
 import { crearUsuario, actualizarUsuario, restablecerPassword, eliminarUsuario } from "./actions";
 import { MODULOS, ModuloKey } from "@/lib/modules";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function UsuariosManager({ usuarios, roles }: { usuarios: Profile[]; roles: RoleRow[] }) {
   return (
@@ -44,7 +43,7 @@ function CrearUsuarioForm({ roles }: { roles: RoleRow[] }) {
     setSuccess(false);
     startTransition(async () => {
       const res = await crearUsuario({ full_name: fullName, email, password, role_id: roleId, modulos });
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else {
         setSuccess(true);
         setFullName("");
@@ -161,7 +160,7 @@ function UsuarioRow({ usuario, roles }: { usuario: Profile; roles: RoleRow[] }) 
   function saveName() {
     startTransition(async () => {
       const res = await actualizarUsuario(usuario.id, { full_name: fullName });
-      if (res?.error) setFeedback({ type: "error", text: traducirError(res.error) });
+      if (res?.error) setFeedback({ type: "error", text: res.error });
       else { setFeedback(null); setEditing(false); }
     });
   }
@@ -171,7 +170,7 @@ function UsuarioRow({ usuario, roles }: { usuario: Profile; roles: RoleRow[] }) 
     if (!nueva) return;
     startTransition(async () => {
       const res = await restablecerPassword(usuario.id, nueva);
-      setFeedback(res?.error ? { type: "error", text: traducirError(res.error) } : { type: "ok", text: "Contraseña actualizada." });
+      setFeedback(res?.error ? { type: "error", text: res.error } : { type: "ok", text: "Contraseña actualizada." });
     });
   }
 
@@ -179,7 +178,7 @@ function UsuarioRow({ usuario, roles }: { usuario: Profile; roles: RoleRow[] }) 
     if (!confirm(`¿Eliminar a "${usuario.full_name}"? Esta acción no se puede deshacer.`)) return;
     startTransition(async () => {
       const res = await eliminarUsuario(usuario.id);
-      if (res?.error) setFeedback({ type: "error", text: traducirError(res.error) });
+      if (res?.error) setFeedback({ type: "error", text: res.error });
       else setRemoved(true);
     });
   }
@@ -282,7 +281,7 @@ function ModulosUsuarioPanel({
   function guardar() {
     startTransition(async () => {
       const res = await actualizarUsuario(usuarioId, { modulos });
-      onFeedback(res?.error ? { type: "error", text: traducirError(res.error) } : { type: "ok", text: "Módulos actualizados." });
+      onFeedback(res?.error ? { type: "error", text: res.error } : { type: "ok", text: "Módulos actualizados." });
     });
   }
 

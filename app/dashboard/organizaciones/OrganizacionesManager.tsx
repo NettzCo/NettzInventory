@@ -4,7 +4,6 @@ import { useState, useTransition, useRef } from "react";
 import { Organization } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { crearOrganizacion, actualizarOrganizacion } from "./actions";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function OrganizacionesManager({ organizaciones }: { organizaciones: Organization[] }) {
   return (
@@ -45,7 +44,7 @@ function CrearOrganizacionForm() {
     setError(null);
     const res = await subirLogo(file);
     setSubiendoLogo(false);
-    if (res.error) setError(`No se pudo subir el logo: ${traducirError(res.error)}`);
+    if (res.error) setError(`No se pudo subir el logo: ${res.error}`);
     else setLogoUrl(res.url!);
   }
 
@@ -55,7 +54,7 @@ function CrearOrganizacionForm() {
     setSuccess(false);
     startTransition(async () => {
       const res = await crearOrganizacion({ name, colorInk, colorAccent, logoUrl, adminFullName, adminEmail, adminPassword });
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else {
         setSuccess(true);
         setName(""); setLogoUrl(""); setAdminFullName(""); setAdminEmail(""); setAdminPassword("");
@@ -155,18 +154,18 @@ function OrganizacionRow({ organizacion }: { organizacion: Organization }) {
     setSubiendoLogo(true);
     const res = await subirLogo(file);
     setSubiendoLogo(false);
-    if (res.error) { setFeedback({ type: "error", text: traducirError(res.error) }); return; }
+    if (res.error) { setFeedback({ type: "error", text: res.error }); return; }
     setLogoUrl(res.url!);
     startTransition(async () => {
       const r = await actualizarOrganizacion(organizacion.id, { logo_url: res.url });
-      setFeedback(r?.error ? { type: "error", text: traducirError(r.error) } : { type: "ok", text: "Logo actualizado." });
+      setFeedback(r?.error ? { type: "error", text: r.error } : { type: "ok", text: "Logo actualizado." });
     });
   }
 
   function guardar() {
     startTransition(async () => {
       const r = await actualizarOrganizacion(organizacion.id, { name: nombre, color_ink: colorInk, color_accent: colorAccent });
-      if (r?.error) setFeedback({ type: "error", text: traducirError(r.error) });
+      if (r?.error) setFeedback({ type: "error", text: r.error });
       else { setFeedback({ type: "ok", text: "Guardado." }); setEditando(false); }
     });
   }

@@ -17,33 +17,18 @@ export async function GET(request: NextRequest) {
   const hasta = params.get("hasta") || "";
 
   const supabase = await createClient();
+  let query = supabase
+    .from("clientes")
+    .select("*")
+    .eq("organization_id", profile.organization_id)
+    .order("codigo");
 
-  const construirQuery = () => {
-    let query = supabase
-      .from("clientes")
-      .select("*, kam:profiles!clientes_kam_id_fkey(full_name)")
-      .eq("organization_id", profile.organization_id)
-      .order("codigo");
+  if (estado === "activo") query = query.eq("active", true);
+  if (estado === "inactivo") query = query.eq("active", false);
+  if (desde) query = query.gte("created_at", desde);
+  if (hasta) query = query.lte("created_at", `${hasta}T23:59:59`);
 
-    if (estado === "activo") query = query.eq("active", true);
-    if (estado === "inactivo") query = query.eq("active", false);
-    if (desde) query = query.gte("created_at", desde);
-    if (hasta) query = query.lte("created_at", `${hasta}T23:59:59`);
-    return query;
-  };
-
-  // Paginado de a 1000 para no cortar el archivo en silencio si algún día
-  // hay más de 1000 clientes.
-  const PAGINA = 1000;
-  const clientes: NonNullable<Awaited<ReturnType<typeof construirQuery>>["data"]> = [];
-  let desdeFila = 0;
-  while (true) {
-    const { data } = await construirQuery().range(desdeFila, desdeFila + PAGINA - 1);
-    if (!data || data.length === 0) break;
-    clientes.push(...data);
-    if (data.length < PAGINA) break;
-    desdeFila += PAGINA;
-  }
+  const { data: clientes } = await query;
 
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -62,14 +47,11 @@ export async function GET(request: NextRequest) {
     { header: "Observaciones", key: "observaciones", width: 30 },
     { header: "Estado", key: "estado", width: 12 },
     { header: "Registrado", key: "registrado", width: 14 },
-    { header: "KAM", key: "kam", width: 22 },
-    { header: "BROKER", key: "broker", width: 22 },
   ];
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF242307" } };
 
-  for (const c of (clientes ?? []) as unknown as (Cliente & { kam: { full_name: string } | { full_name: string }[] | null })[]) {
-    const kam = Array.isArray(c.kam) ? c.kam[0]?.full_name : c.kam?.full_name;
+  for (const c of (clientes ?? []) as Cliente[]) {
     sheet.addRow({
       codigo: formatCodigoCliente(c.codigo),
       nombre: c.nombre,
@@ -83,8 +65,6 @@ export async function GET(request: NextRequest) {
       observaciones: c.observaciones ?? "",
       estado: c.active ? "Activo" : "Inactivo",
       registrado: formatFecha(c.created_at),
-      kam: kam ?? "",
-      broker: c.broker ?? "",
     });
   }
 

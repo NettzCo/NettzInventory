@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { Apn } from "@/lib/types";
 import { crearApn, actualizarApn, eliminarApn } from "./actions";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function ApnsManager({ apns }: { apns: Apn[] }) {
   const [nombre, setNombre] = useState("");
@@ -15,7 +14,7 @@ export default function ApnsManager({ apns }: { apns: Apn[] }) {
     setError(null);
     startTransition(async () => {
       const res = await crearApn(nombre);
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else setNombre("");
     });
   }

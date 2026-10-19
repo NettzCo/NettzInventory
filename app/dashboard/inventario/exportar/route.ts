@@ -15,39 +15,24 @@ export async function GET(request: NextRequest) {
   const fechaDesde = params.get("fecha_desde") || undefined;
   const fechaHasta = params.get("fecha_hasta") || undefined;
 
-  const construirQuery = () => {
-    let query = supabase
-      .from("sim_current_view")
-      .select("*")
-      .order("created_at", { ascending: false });
+  let query = supabase
+    .from("sim_current_view")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-    if (estado) query = query.eq("estado_actual", estado);
-    if (proveedor) query = query.eq("proveedor", proveedor);
-    if (cliente) query = query.ilike("cliente_actual", `%${cliente}%`);
-    if (planUnidad) query = query.eq("plan_unidad", planUnidad);
-    if (tipoPlan) query = query.eq("tipo_plan", tipoPlan);
-    if (precioMin) query = query.gte("precio_cliente", Number(precioMin));
-    if (precioMax) query = query.lte("precio_cliente", Number(precioMax));
-    if (fechaDesde) query = query.gte("fecha_entrega", fechaDesde);
-    if (fechaHasta) query = query.lte("fecha_entrega", fechaHasta);
-    return query;
-  };
+  if (estado) query = query.eq("estado_actual", estado);
+  if (proveedor) query = query.eq("proveedor", proveedor);
+  if (cliente) query = query.ilike("cliente_actual", `%${cliente}%`);
+  if (planUnidad) query = query.eq("plan_unidad", planUnidad);
+  if (tipoPlan) query = query.eq("tipo_plan", tipoPlan);
+  if (precioMin) query = query.gte("precio_cliente", Number(precioMin));
+  if (precioMax) query = query.lte("precio_cliente", Number(precioMax));
+  if (fechaDesde) query = query.gte("fecha_entrega", fechaDesde);
+  if (fechaHasta) query = query.lte("fecha_entrega", fechaHasta);
 
-  // Se pagina de a 1000 — sin esto, exportar sin filtros (o con un filtro
-  // que igual deja miles de SIM) se corta en las primeras 1000 en silencio,
-  // sin ningún error, y el Excel sale incompleto.
-  const PAGINA = 1000;
-  const sims: NonNullable<Awaited<ReturnType<typeof construirQuery>>["data"]> = [];
-  let desde = 0;
-  while (true) {
-    const { data, error } = await construirQuery().range(desde, desde + PAGINA - 1);
-    if (error) {
-      return new Response(`No se pudo generar el archivo: ${error.message}`, { status: 500 });
-    }
-    if (!data || data.length === 0) break;
-    sims.push(...data);
-    if (data.length < PAGINA) break;
-    desde += PAGINA;
+  const { data: sims, error } = await query;
+  if (error) {
+    return new Response(`No se pudo generar el archivo: ${error.message}`, { status: 500 });
   }
 
   // Nombres completos de comercial/broker (sim_current_view ya los trae)

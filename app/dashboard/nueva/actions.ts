@@ -5,7 +5,7 @@ import { getCurrentProfile } from "@/lib/currentProfile";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ESTADOS_SIM, PLAN_UNIDADES, TIPOS_PLAN, PAGOS_MOMENTO } from "@/lib/types";
-import { encontrarClienteSimilarConTipo, emparejarValorInsensible } from "@/lib/textMatch";
+import { encontrarClienteSimilar, emparejarValorInsensible } from "@/lib/textMatch";
 
 export interface SimRowInput {
   icc: string;
@@ -397,16 +397,8 @@ async function extraerFilas(formData: FormData): Promise<{ error: string } | { f
     const broker = brokerEscrito ? nombreToId.get(brokerEscrito.toLowerCase()) : undefined;
     if (brokerEscrito && !broker) errores.push(`broker_correo "${brokerEscrito}" no coincide con ningún usuario activo`);
 
-    const coincidenciaCliente = clienteEscrito ? encontrarClienteSimilarConTipo(clienteEscrito, clientesExistentes) : null;
-    // Si el nombre coincide EXACTO salvo mayúsculas/tildes/espacios (p. ej.
-    // "MOTORASTREO" vs "Motorastreo"), es sin duda el mismo cliente — se usa
-    // directamente el nombre ya registrado, sin preguntarle nada a la
-    // persona. Solo se pide confirmación cuando la coincidencia es
-    // aproximada (un posible typo), porque ahí sí puede ser un cliente
-    // distinto que solo se parece.
-    const necesitaConfirmar = coincidenciaCliente?.tipo === "aproximada";
-    const clienteSugerido = necesitaConfirmar ? coincidenciaCliente!.nombre : null;
-    const clienteInicial = coincidenciaCliente?.tipo === "exacta" ? coincidenciaCliente.nombre : clienteEscrito;
+    const clienteSugerido = clienteEscrito ? encontrarClienteSimilar(clienteEscrito, clientesExistentes) : null;
+    const necesitaConfirmar = !!clienteSugerido && clienteSugerido !== clienteEscrito;
 
     // ¿Este número corto ya está asignado hoy a una SIM DISTINTA a la de esta fila?
     const dueñoActual = numeroCorto ? numeroCortoAIcc.get(numeroCorto) : undefined;
@@ -421,11 +413,10 @@ async function extraerFilas(formData: FormData): Promise<{ error: string } | { f
       observaciones,
       estado,
       clienteEscrito,
-      clienteSugerido,
-      // Si hubo coincidencia exacta, ya se guarda el nombre canónico
-      // existente. Si es aproximada, se guarda el texto tal cual hasta que
-      // la persona confirme si es o no el mismo cliente.
-      clienteResuelto: clienteInicial,
+      clienteSugerido: necesitaConfirmar ? clienteSugerido : null,
+      // Por defecto, si hay un cliente parecido, no se aplica solo hasta que el usuario confirme;
+      // se guarda el nombre tal cual se escribió hasta que el usuario decida lo contrario.
+      clienteResuelto: clienteEscrito,
       planUnidad,
       planCantidad,
       tipoPlan,
@@ -528,146 +519,6 @@ async function resolverConflictoNumeroCorto(
   return { aplicarNumero: true };
 }
 
-// Cuántas filas se insertan juntas en una sola operación — 6.000+ filas
-// pasaban de decenas de miles de idas y vueltas a la base de datos (una por
-// cada paso de cada fila) a unas pocas docenas, evitando el error de
-// "tiempo agotado" en cargas grandes. Si algo falla dentro de un lote, ese
-// lote puntual se reintenta fila por fila para no perder precisión sobre
-// cuál fila específica fue la que falló.
-const TAMANO_LOTE_INSERCION = 200;
-
-/** Crea UNA SIM nueva con toda su hoja de vida inicial — es la ruta lenta
- *  pero precisa, usada como respaldo cuando un lote completo falla. */
-async function crearSimIndividual(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  organizationId: string,
-  f: FilaParseada,
-  userId: string,
-  operacionId: string
-): Promise<FilaResultado> {
-  const cliente = f.clienteResuelto.trim();
-
-  const { data: simCard, error: simError } = await supabase
-    .from("sim_cards")
-    .insert({ organization_id: organizationId, icc: f.icc, proveedor: f.proveedor, apn: f.apn || null, observaciones: f.observaciones || null, created_by: userId })
-    .select("id")
-    .single();
-  if (simError) return { fila: f.fila, icc: f.icc, ok: false, error: simError.message };
-  const simId = simCard.id as string;
-
-  const { error: errorEstado } = await supabase.from("sim_status_history").insert({ sim_id: simId, estado: f.estado, changed_by: userId, nota: "Estado inicial (carga masiva).", bulk_operation_id: operacionId });
-  if (errorEstado) {
-    await supabase.from("sim_cards").delete().eq("id", simId);
-    return { fila: f.fila, icc: f.icc, ok: false, error: `No se pudo registrar el estado: ${errorEstado.message}` };
-  }
-
-  if (f.numeroCorto) {
-    const { error: errorConflicto, aplicarNumero } = await resolverConflictoNumeroCorto(supabase, f, userId, operacionId);
-    if (errorConflicto) {
-      await supabase.from("sim_cards").delete().eq("id", simId);
-      return { fila: f.fila, icc: f.icc, ok: false, error: errorConflicto };
-    }
-    if (aplicarNumero) {
-      const { error: errorNumero } = await supabase.from("sim_short_numbers").insert({ sim_id: simId, organization_id: organizationId, numero_corto: f.numeroCorto, assigned_by: userId });
-      if (errorNumero) {
-        await supabase.from("sim_cards").delete().eq("id", simId);
-        return { fila: f.fila, icc: f.icc, ok: false, error: `No se pudo registrar el número corto: ${errorNumero.message}` };
-      }
-    }
-  }
-
-  const { error: errorAsignacion } = await supabase.from("sim_assignments").insert({
-    sim_id: simId, cliente_nombre: cliente, plan_unidad: f.planUnidad, plan_cantidad: Number(f.planCantidad),
-    tipo_plan: f.tipoPlan, pago_momento: f.pagoMomento, precio_cliente: Number(f.precio),
-    comercial_id: f.comercialId, broker_id: f.brokerId || null, fecha_entrega: f.fechaEntrega, created_by: userId,
-    bulk_operation_id: operacionId,
-  });
-  if (errorAsignacion) {
-    await supabase.from("sim_cards").delete().eq("id", simId);
-    return { fila: f.fila, icc: f.icc, ok: false, error: `No se pudo asignar el cliente/plan: ${errorAsignacion.message}` };
-  }
-
-  return { fila: f.fila, icc: f.icc, ok: true, accion: "creada" };
-}
-
-/** Crea un LOTE de SIM nuevas de una sola vez (una llamada por tabla, no
- *  una por fila). Si algo sale mal con el lote completo, se reintenta fila
- *  por fila automáticamente para no perder ninguna fila válida por culpa
- *  de una sola fila problemática. */
-async function crearLoteDeSims(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  organizationId: string,
-  lote: FilaParseada[],
-  userId: string,
-  operacionId: string
-): Promise<FilaResultado[]> {
-  try {
-    const { data: simsCreadas, error: errorSims } = await supabase
-      .from("sim_cards")
-      .insert(lote.map((f) => ({
-        organization_id: organizationId, icc: f.icc, proveedor: f.proveedor,
-        apn: f.apn || null, observaciones: f.observaciones || null, created_by: userId,
-      })))
-      .select("id, icc");
-    if (errorSims || !simsCreadas) throw new Error(errorSims?.message ?? "No se crearon las SIM del lote.");
-
-    const iccASimId = new Map(simsCreadas.map((s) => [s.icc as string, s.id as string]));
-
-    const { error: errorEstados } = await supabase.from("sim_status_history").insert(
-      lote.map((f) => ({
-        sim_id: iccASimId.get(f.icc), estado: f.estado, changed_by: userId,
-        nota: "Estado inicial (carga masiva).", bulk_operation_id: operacionId,
-      }))
-    );
-    if (errorEstados) throw new Error(`No se pudo registrar el estado inicial del lote: ${errorEstados.message}`);
-
-    // Los conflictos de número corto son poco frecuentes — solo se resuelven
-    // (uno por uno, porque cada resolución afecta a OTRA sim distinta) para
-    // las pocas filas del lote que de verdad los tienen.
-    const filasConNumero: FilaParseada[] = [];
-    for (const f of lote) {
-      if (!f.numeroCorto) continue;
-      if (f.numeroCortoConflictoIcc) {
-        const { error: errorConflicto, aplicarNumero } = await resolverConflictoNumeroCorto(supabase, f, userId, operacionId);
-        if (errorConflicto) throw new Error(errorConflicto);
-        if (aplicarNumero) filasConNumero.push(f);
-      } else {
-        filasConNumero.push(f);
-      }
-    }
-    if (filasConNumero.length > 0) {
-      const { error: errorNumeros } = await supabase.from("sim_short_numbers").insert(
-        filasConNumero.map((f) => ({
-          sim_id: iccASimId.get(f.icc), organization_id: organizationId,
-          numero_corto: f.numeroCorto, assigned_by: userId,
-        }))
-      );
-      if (errorNumeros) throw new Error(`No se pudieron registrar los números cortos del lote: ${errorNumeros.message}`);
-    }
-
-    const { error: errorAsignaciones } = await supabase.from("sim_assignments").insert(
-      lote.map((f) => ({
-        sim_id: iccASimId.get(f.icc), cliente_nombre: f.clienteResuelto.trim(), plan_unidad: f.planUnidad,
-        plan_cantidad: Number(f.planCantidad), tipo_plan: f.tipoPlan, pago_momento: f.pagoMomento,
-        precio_cliente: Number(f.precio), comercial_id: f.comercialId, broker_id: f.brokerId || null,
-        fecha_entrega: f.fechaEntrega, created_by: userId, bulk_operation_id: operacionId,
-      }))
-    );
-    if (errorAsignaciones) throw new Error(`No se pudo asignar cliente/plan en el lote: ${errorAsignaciones.message}`);
-
-    return lote.map((f) => ({ fila: f.fila, icc: f.icc, ok: true, accion: "creada" as const }));
-  } catch {
-    // Algo del lote falló — se reintenta fila por fila para aislar
-    // exactamente cuál (o cuáles) filas son las problemáticas, sin perder
-    // las demás filas válidas del mismo lote.
-    const resultados: FilaResultado[] = [];
-    for (const f of lote) {
-      resultados.push(await crearSimIndividual(supabase, organizationId, f, userId, operacionId));
-    }
-    return resultados;
-  }
-}
-
 /** FASE 2: guarda de verdad, ya con las decisiones del usuario sobre cada cliente ambiguo. */
 export async function confirmarCargaMasiva(filas: FilaParseada[]) {
   const { userId, profile } = await getCurrentProfile();
@@ -693,42 +544,73 @@ export async function confirmarCargaMasiva(filas: FilaParseada[]) {
   let actualizadas = 0;
   let sinCambios = 0;
 
-  const filasValidas = filas.filter((f) => {
+  for (const f of filas) {
     if (f.errores.length > 0) {
       resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: f.errores.join("; ") });
-      return false;
+      continue;
     }
-    return true;
-  });
 
-  // Una sola consulta para saber cuáles ICC ya existen, en vez de una
-  // consulta por fila — con miles de filas, esto solo ya evita miles de
-  // idas y vueltas a la base de datos.
-  const { data: existentes } = await supabase
-    .from("sim_cards")
-    .select("id, icc, apn, observaciones")
-    .in("icc", filasValidas.map((f) => f.icc));
-  const iccAExistente = new Map((existentes ?? []).map((s) => [s.icc as string, s]));
-
-  const filasNuevas = filasValidas.filter((f) => !iccAExistente.has(f.icc));
-  const filasExistentes = filasValidas.filter((f) => iccAExistente.has(f.icc));
-
-  // ---- SIM nuevas: en lotes, no una por una ----
-  for (let i = 0; i < filasNuevas.length; i += TAMANO_LOTE_INSERCION) {
-    const lote = filasNuevas.slice(i, i + TAMANO_LOTE_INSERCION);
-    const resultadosLote = await crearLoteDeSims(supabase, profile.organization_id, lote, userId, operacionId);
-    for (const r of resultadosLote) {
-      resultados.push(r);
-      if (r.ok) creadas++;
-    }
-  }
-
-  // ---- SIM que ya existían: se actualizan una por una (son las menos, y
-  // cada una necesita comparar contra su estado actual para saber qué
-  // cambió realmente) ----
-  for (const f of filasExistentes) {
     const cliente = f.clienteResuelto.trim();
-    const existente = iccAExistente.get(f.icc)!;
+    const { data: existente } = await supabase.from("sim_cards").select("id, apn, observaciones").eq("icc", f.icc).maybeSingle();
+
+    if (!existente) {
+      const { data: simCard, error: simError } = await supabase
+        .from("sim_cards")
+        .insert({ organization_id: profile.organization_id, icc: f.icc, proveedor: f.proveedor, apn: f.apn || null, observaciones: f.observaciones || null, created_by: userId })
+        .select("id")
+        .single();
+
+      if (simError) {
+        resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: simError.message });
+        continue;
+      }
+
+      const simId = simCard.id as string;
+
+      const { error: errorEstado } = await supabase.from("sim_status_history").insert({ sim_id: simId, estado: f.estado, changed_by: userId, nota: "Estado inicial (carga masiva).", bulk_operation_id: operacionId });
+      if (errorEstado) {
+        await supabase.from("sim_cards").delete().eq("id", simId);
+        resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: `No se pudo registrar el estado: ${errorEstado.message}` });
+        continue;
+      }
+
+      if (f.numeroCorto) {
+        const { error: errorConflicto, aplicarNumero } = await resolverConflictoNumeroCorto(supabase, f, userId, operacionId);
+        if (errorConflicto) {
+          await supabase.from("sim_cards").delete().eq("id", simId);
+          resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: errorConflicto });
+          continue;
+        }
+        if (aplicarNumero) {
+          const { error: errorNumero } = await supabase.from("sim_short_numbers").insert({ sim_id: simId, organization_id: profile.organization_id, numero_corto: f.numeroCorto, assigned_by: userId });
+          if (errorNumero) {
+            await supabase.from("sim_cards").delete().eq("id", simId);
+            resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: `No se pudo registrar el número corto: ${errorNumero.message}` });
+            continue;
+          }
+        }
+      }
+
+      const { error: errorAsignacion } = await supabase.from("sim_assignments").insert({
+        sim_id: simId, cliente_nombre: cliente, plan_unidad: f.planUnidad, plan_cantidad: Number(f.planCantidad),
+        tipo_plan: f.tipoPlan, pago_momento: f.pagoMomento, precio_cliente: Number(f.precio),
+        comercial_id: f.comercialId, broker_id: f.brokerId || null, fecha_entrega: f.fechaEntrega, created_by: userId,
+        bulk_operation_id: operacionId,
+      });
+      if (errorAsignacion) {
+        // No se deja la SIM a medias (con ICC pero sin cliente/plan) — se
+        // revierte por completo para que la fila quede claramente como
+        // fallida y se pueda corregir y volver a cargar.
+        await supabase.from("sim_cards").delete().eq("id", simId);
+        resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: `No se pudo asignar el cliente/plan: ${errorAsignacion.message}` });
+        continue;
+      }
+
+      creadas++;
+      resultados.push({ fila: f.fila, icc: f.icc, ok: true, accion: "creada" });
+      continue;
+    }
+
     const simId = existente.id as string;
     let cambio = false;
 

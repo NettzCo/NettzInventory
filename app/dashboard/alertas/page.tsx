@@ -1,11 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/currentProfile";
-import { ESTADOS_SIM, EstadoSim } from "@/lib/types";
+import { SimCurrentView, ESTADOS_SIM, EstadoSim } from "@/lib/types";
 import { calcularAlertas, DIAS_ALERTA_DEFAULT, ESTADOS_ALERTA_DEFAULT } from "@/lib/alerts";
 import { obtenerAlertasVistas } from "@/lib/alertReads";
 import { construirAlertasChat } from "@/lib/chatAlerts";
 import { construirAlertasPedidos } from "@/lib/pedidoAlerts";
-import { traerInventarioCompleto } from "@/lib/simQueries";
 import AlertasChatLive from "./AlertasChatLive";
 import AlertasPedidosLive from "./AlertasPedidosLive";
 import AlertasVencimientoTable from "./AlertasVencimientoTable";
@@ -29,8 +28,8 @@ export default async function AlertasPage({
 
   const { userId, profile } = await getCurrentProfile();
   const supabase = await createClient();
-  const [sims, alertasChat, alertasPedidos, vistas] = await Promise.all([
-    traerInventarioCompleto(supabase),
+  const [{ data: sims }, alertasChat, alertasPedidos, vistas] = await Promise.all([
+    supabase.from("sim_current_view").select("*"),
     construirAlertasChat(supabase, userId, profile.organization_id),
     construirAlertasPedidos(supabase, userId, profile.organization_id),
     obtenerAlertasVistas(supabase, userId),
@@ -39,7 +38,7 @@ export default async function AlertasPage({
   const { data: proveedoresRows } = await supabase.from("sim_cards").select("proveedor").order("proveedor");
   const proveedores = Array.from(new Set((proveedoresRows ?? []).map((p) => p.proveedor)));
 
-  const alertas = calcularAlertas(sims, vistas, {
+  const alertas = calcularAlertas((sims ?? []) as SimCurrentView[], vistas, {
     estados: estadosSeleccionados,
     proveedor: proveedor || undefined,
     umbralDias: umbral,

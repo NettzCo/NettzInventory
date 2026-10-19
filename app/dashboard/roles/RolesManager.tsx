@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { RoleRow } from "@/lib/types";
 import { MODULOS, ModuloKey } from "@/lib/modules";
 import { crearRol, actualizarRol, eliminarRol } from "./actions";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function RolesManager({ roles }: { roles: RoleRow[] }) {
   const [nombre, setNombre] = useState("");
@@ -21,7 +20,7 @@ export default function RolesManager({ roles }: { roles: RoleRow[] }) {
     setError(null);
     startTransition(async () => {
       const res = await crearRol({ name: nombre, default_modulos: modulos });
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else { setNombre(""); setModulos(["inventario", "alertas"]); }
     });
   }
@@ -97,7 +96,7 @@ function RolRow({ rol }: { rol: RoleRow }) {
   function guardarNombre() {
     startTransition(async () => {
       const res = await actualizarRol(rol.id, { name: nombre });
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else { setError(null); setEditando(false); }
     });
   }
@@ -106,7 +105,7 @@ function RolRow({ rol }: { rol: RoleRow }) {
     if (!confirm(`¿Eliminar el rol "${rol.name}"?`)) return;
     startTransition(async () => {
       const res = await eliminarRol(rol.id);
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else setRemovido(true);
     });
   }

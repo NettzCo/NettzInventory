@@ -2,7 +2,6 @@
 
 import { useRef, useState, useTransition } from "react";
 import { analizarCargaMasivaClientes, confirmarCargaMasivaClientes, FilaClienteParseada } from "./actions";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function CargaMasivaClientes() {
   const [filas, setFilas] = useState<FilaClienteParseada[] | null>(null);
@@ -25,7 +24,7 @@ export default function CargaMasivaClientes() {
     startTransition(async () => {
       const res = await analizarCargaMasivaClientes(formData);
       if ("error" in res && res.error) {
-        setError(traducirError(res.error));
+        setError(res.error);
         setFilas(null);
         return;
       }
@@ -60,21 +59,8 @@ export default function CargaMasivaClientes() {
       // Si eligieron "usar_sugerido", no lo creamos como cliente nuevo — se
       // asume que ya existe y esa fila solo aportaba información repetida.
       const filasACrear = filas.filter((f) => decisiones[f.fila] !== "usar_sugerido");
-
-      // Se manda en tandas chicas (no todo de una vez) para que la llamada
-      // nunca se acerque a ningún límite de tamaño del servidor, sin
-      // importar cuántos clientes traiga el archivo.
-      const TAMANO_TANDA = 300;
-      const acumulado = { creados: 0, omitidos: 0, errores: [] as string[] };
-      for (let i = 0; i < filasACrear.length; i += TAMANO_TANDA) {
-        const tanda = filasACrear.slice(i, i + TAMANO_TANDA);
-        const res = await confirmarCargaMasivaClientes(tanda);
-        acumulado.creados += res.creados ?? 0;
-        acumulado.omitidos += res.omitidos ?? 0;
-        acumulado.errores.push(...(res.errores ?? []));
-      }
-
-      setResultado(acumulado);
+      const res = await confirmarCargaMasivaClientes(filasACrear);
+      setResultado(res);
       setFilas(null);
       setDecisiones({});
       if (fileRef.current) fileRef.current.value = "";
@@ -195,8 +181,6 @@ export default function CargaMasivaClientes() {
                   <th className="px-4 py-2 font-medium text-xs uppercase">Nombre</th>
                   <th className="px-4 py-2 font-medium text-xs uppercase">Documento</th>
                   <th className="px-4 py-2 font-medium text-xs uppercase">Industria</th>
-                  <th className="px-4 py-2 font-medium text-xs uppercase">KAM</th>
-                  <th className="px-4 py-2 font-medium text-xs uppercase">Broker</th>
                   <th className="px-4 py-2 font-medium text-xs uppercase">Situación</th>
                 </tr>
               </thead>
@@ -207,11 +191,9 @@ export default function CargaMasivaClientes() {
                     <td className="px-4 py-2">{f.nombre}</td>
                     <td className="px-4 py-2">{f.documento || "—"}</td>
                     <td className="px-4 py-2">{f.industria || "—"}</td>
-                    <td className="px-4 py-2">{f.kam || "—"}</td>
-                    <td className="px-4 py-2">{f.broker || "—"}</td>
                     <td className="px-4 py-2">
                       {f.error ? (
-                        <span style={{ color: "var(--state-desactivada)" }}>{traducirError(f.error)}</span>
+                        <span style={{ color: "var(--state-desactivada)" }}>{f.error}</span>
                       ) : f.clienteSugerido ? (
                         <div className="flex flex-col gap-1">
                           <span style={{ color: "var(--state-lista)" }}>

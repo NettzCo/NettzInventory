@@ -5,7 +5,6 @@ import { Provider } from "@/lib/types";
 import { crearProveedor, actualizarProveedor, eliminarProveedor } from "./actions";
 import { guardarIntegracion, probarConexion, sincronizarProveedor } from "./integration-actions";
 import { ADAPTER_OPTIONS } from "@/lib/integrations/registry";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function ProveedoresManager({ proveedores }: { proveedores: Provider[] }) {
   const [nombre, setNombre] = useState("");
@@ -17,7 +16,7 @@ export default function ProveedoresManager({ proveedores }: { proveedores: Provi
     setError(null);
     startTransition(async () => {
       const res = await crearProveedor(nombre);
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else setNombre("");
     });
   }
@@ -168,7 +167,7 @@ function IntegracionPanel({ proveedor }: { proveedor: Provider }) {
         api_key: apiKey,
         api_secret: apiSecret,
       });
-      setFeedback(res?.error ? { type: "error", text: traducirError(res.error) } : { type: "ok", text: "Configuración guardada." });
+      setFeedback(res?.error ? { type: "error", text: res.error } : { type: "ok", text: "Configuración guardada." });
     });
   }
 
@@ -176,7 +175,7 @@ function IntegracionPanel({ proveedor }: { proveedor: Provider }) {
     setFeedback(null);
     startTransition(async () => {
       const res = await probarConexion(proveedor.id);
-      setFeedback(res?.error ? { type: "error", text: traducirError(res.error) } : { type: "ok", text: res.message ?? "Conexión exitosa." });
+      setFeedback(res?.error ? { type: "error", text: res.error } : { type: "ok", text: res.message ?? "Conexión exitosa." });
     });
   }
 
@@ -184,7 +183,7 @@ function IntegracionPanel({ proveedor }: { proveedor: Provider }) {
     setFeedback(null);
     startTransition(async () => {
       const res = await sincronizarProveedor(proveedor.id);
-      setFeedback(res?.error ? { type: "error", text: traducirError(res.error) } : { type: "ok", text: res.message ?? "Sincronización completada." });
+      setFeedback(res?.error ? { type: "error", text: res.error } : { type: "ok", text: res.message ?? "Sincronización completada." });
     });
   }
 

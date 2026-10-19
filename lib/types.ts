@@ -89,9 +89,6 @@ export interface Cliente {
   active: boolean;
   created_at: string;
   created_by: string;
-  kam_id: string | null;
-  broker: string | null; // texto libre, no un usuario del sistema
-  kam_nombre?: string | null; // resuelto al consultar, uniendo con profiles
 }
 
 export interface Provider {

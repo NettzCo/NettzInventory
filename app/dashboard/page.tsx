@@ -1,8 +1,8 @@
 import { getCurrentProfile } from "@/lib/currentProfile";
 import { createClient } from "@/lib/supabase/server";
+import { SimCurrentView } from "@/lib/types";
 import { contarAlertasActivas } from "@/lib/alerts";
 import { obtenerAlertasVistas } from "@/lib/alertReads";
-import { traerInventarioCompleto } from "@/lib/simQueries";
 import Link from "next/link";
 
 export default async function InicioPage() {
@@ -12,8 +12,8 @@ export default async function InicioPage() {
   const haceUnMes = new Date();
   haceUnMes.setDate(haceUnMes.getDate() - 30);
 
-  const [sims, clientesActivosRes, totalClientesRes, { data: activacionesRecientes }, vistas] = await Promise.all([
-    traerInventarioCompleto(supabase),
+  const [{ data: sims }, clientesActivosRes, totalClientesRes, { data: activacionesRecientes }, vistas] = await Promise.all([
+    supabase.from("sim_current_view").select("*"),
     supabase.from("clientes").select("id", { count: "exact", head: true }).eq("organization_id", profile.organization_id).eq("active", true),
     supabase.from("clientes").select("id", { count: "exact", head: true }).eq("organization_id", profile.organization_id),
     supabase
@@ -25,7 +25,7 @@ export default async function InicioPage() {
     obtenerAlertasVistas(supabase, userId),
   ]);
 
-  const simsList = sims;
+  const simsList = (sims ?? []) as SimCurrentView[];
   const totalSims = simsList.length;
   const alertasActivas = contarAlertasActivas(simsList, vistas);
   const totalClientes = totalClientesRes.count ?? 0;

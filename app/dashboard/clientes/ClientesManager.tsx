@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { Cliente, INDUSTRIAS } from "@/lib/types";
 import { formatCodigoCliente, formatFecha } from "@/lib/ui";
 import { crearCliente, actualizarCliente, eliminarCliente, ClienteInput } from "./actions";
 import CargaMasivaClientes from "./CargaMasivaClientes";
-import { traducirError } from "@/lib/friendlyError";
 
 const CAMPOS_VACIOS: ClienteInput = {
   nombre: "",
@@ -18,16 +16,9 @@ const CAMPOS_VACIOS: ClienteInput = {
   industria: "",
   fecha_vinculacion: "",
   observaciones: "",
-  kam_id: "",
-  broker: "",
 };
 
-export interface UsuarioOpcion {
-  id: string;
-  full_name: string | null;
-}
-
-export default function ClientesManager({ clientes, usuarios }: { clientes: Cliente[]; usuarios: UsuarioOpcion[] }) {
+export default function ClientesManager({ clientes }: { clientes: Cliente[] }) {
   const [busqueda, setBusqueda] = useState("");
   const filtrados = clientes
     .filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()) || String(c.codigo).includes(busqueda))
@@ -61,7 +52,7 @@ export default function ClientesManager({ clientes, usuarios }: { clientes: Clie
         </button>
       </form>
 
-      <CrearClienteForm usuarios={usuarios} />
+      <CrearClienteForm />
 
       <CargaMasivaClientes />
 
@@ -76,7 +67,7 @@ export default function ClientesManager({ clientes, usuarios }: { clientes: Clie
             onChange={(e) => setBusqueda(e.target.value)}
           />
         </div>
-        <table className="w-full text-sm" style={{ minWidth: "1300px" }}>
+        <table className="w-full text-sm" style={{ minWidth: "1100px" }}>
           <thead>
             <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Código</th>
@@ -85,15 +76,13 @@ export default function ClientesManager({ clientes, usuarios }: { clientes: Clie
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Documento</th>
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Contacto</th>
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Industria</th>
-              <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">KAM</th>
-              <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Broker</th>
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Vinculación</th>
               <th className="px-6 py-3 font-medium text-xs uppercase tracking-wide">Estado</th>
               <th className="px-6 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {filtrados.map((c) => <ClienteRow key={c.id} cliente={c} usuarios={usuarios} />)}
+            {filtrados.map((c) => <ClienteRow key={c.id} cliente={c} />)}
           </tbody>
         </table>
         {filtrados.length === 0 && (
@@ -107,7 +96,7 @@ export default function ClientesManager({ clientes, usuarios }: { clientes: Clie
   );
 }
 
-function CamposCliente({ form, patch, usuarios }: { form: ClienteInput; patch: (p: Partial<ClienteInput>) => void; usuarios: UsuarioOpcion[] }) {
+function CamposCliente({ form, patch }: { form: ClienteInput; patch: (p: Partial<ClienteInput>) => void }) {
   return (
     <>
       <input className="input col-span-2" placeholder="Nombre completo o razón social *" value={form.nombre} onChange={(e) => patch({ nombre: e.target.value })} required />
@@ -120,11 +109,6 @@ function CamposCliente({ form, patch, usuarios }: { form: ClienteInput; patch: (
         <option value="">Industria (sin especificar)</option>
         {INDUSTRIAS.map((i) => <option key={i} value={i}>{i}</option>)}
       </select>
-      <select className="input" value={form.kam_id} onChange={(e) => patch({ kam_id: e.target.value })}>
-        <option value="">KAM (sin asignar)</option>
-        {usuarios.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-      </select>
-      <input className="input" placeholder="Broker (texto libre)" value={form.broker} onChange={(e) => patch({ broker: e.target.value })} />
       <div className="field">
         <label className="text-xs" style={{ color: "var(--text-secondary)" }}>Fecha de vinculación</label>
         <input className="input" type="date" value={form.fecha_vinculacion} onChange={(e) => patch({ fecha_vinculacion: e.target.value })} />
@@ -134,7 +118,7 @@ function CamposCliente({ form, patch, usuarios }: { form: ClienteInput; patch: (
   );
 }
 
-function CrearClienteForm({ usuarios }: { usuarios: UsuarioOpcion[] }) {
+function CrearClienteForm() {
   const [form, setForm] = useState<ClienteInput>(CAMPOS_VACIOS);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -150,7 +134,7 @@ function CrearClienteForm({ usuarios }: { usuarios: UsuarioOpcion[] }) {
     setSuccess(false);
     startTransition(async () => {
       const res = await crearCliente(form);
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else { setSuccess(true); setForm(CAMPOS_VACIOS); }
     });
   }
@@ -159,7 +143,7 @@ function CrearClienteForm({ usuarios }: { usuarios: UsuarioOpcion[] }) {
     <section className="rounded-xl border bg-white p-6" style={{ borderColor: "var(--border)" }}>
       <h2 className="font-display text-base font-semibold mb-4">Registrar cliente</h2>
       <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 max-w-2xl">
-        <CamposCliente form={form} patch={patch} usuarios={usuarios} />
+        <CamposCliente form={form} patch={patch} />
         <button
           type="submit"
           disabled={isPending}
@@ -186,12 +170,10 @@ function formToCliente(cliente: Cliente): ClienteInput {
     industria: cliente.industria ?? "",
     fecha_vinculacion: cliente.fecha_vinculacion ?? "",
     observaciones: cliente.observaciones ?? "",
-    kam_id: cliente.kam_id ?? "",
-    broker: cliente.broker ?? "",
   };
 }
 
-function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: UsuarioOpcion[] }) {
+function ClienteRow({ cliente }: { cliente: Cliente }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<ClienteInput>(formToCliente(cliente));
   const [active, setActive] = useState(cliente.active);
@@ -207,7 +189,7 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
     setError(null);
     startTransition(async () => {
       const res = await actualizarCliente(cliente.id, form);
-      if (res?.error) setError(traducirError(res.error));
+      if (res?.error) setError(res.error);
       else setEditando(false);
     });
   }
@@ -235,13 +217,13 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
   if (editando) {
     return (
       <tr className="border-b last:border-0 align-top" style={{ borderColor: "var(--border)" }}>
-        <td colSpan={11} className="px-6 py-4" style={{ background: "var(--bg)" }}>
+        <td colSpan={9} className="px-6 py-4" style={{ background: "var(--bg)" }}>
           <div className="flex items-center gap-2 mb-3">
             <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{formatCodigoCliente(cliente.codigo)}</span>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>(el código no se puede editar)</span>
           </div>
           <div className="grid grid-cols-2 gap-3 max-w-2xl">
-            <CamposCliente form={form} patch={patch} usuarios={usuarios} />
+            <CamposCliente form={form} patch={patch} />
           </div>
           {error && <p className="text-sm mt-2" style={{ color: "var(--state-desactivada)" }}>{error}</p>}
           <div className="flex gap-3 mt-3">
@@ -262,9 +244,7 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
       <td className="px-6 py-3 font-mono whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>{formatCodigoCliente(cliente.codigo)}</td>
       <td className="px-6 py-3">
         <div className="flex items-center gap-2">
-          <Link href={`/dashboard/clientes/${cliente.id}`} className="hover:underline" style={{ color: "var(--ink-900)" }}>
-            {cliente.nombre}
-          </Link>
+          <span>{cliente.nombre}</span>
           <button onClick={() => setEditando(true)} className="text-xs hover:underline cursor-pointer" style={{ color: "var(--text-secondary)" }}>Editar</button>
         </div>
       </td>
@@ -275,8 +255,6 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
         <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{cliente.correo ?? ""}</div>
       </td>
       <td className="px-6 py-3 whitespace-nowrap">{cliente.industria ?? "—"}</td>
-      <td className="px-6 py-3 whitespace-nowrap">{cliente.kam_nombre ?? "—"}</td>
-      <td className="px-6 py-3 whitespace-nowrap">{cliente.broker ?? "—"}</td>
       <td className="px-6 py-3 whitespace-nowrap">{cliente.fecha_vinculacion ? formatFecha(cliente.fecha_vinculacion) : "—"}</td>
       <td className="px-6 py-3">
         <button

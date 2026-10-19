@@ -6,19 +6,19 @@ import { contarAlertasActivas } from "@/lib/alerts";
 import { obtenerAlertasVistas } from "@/lib/alertReads";
 import { construirAlertasChat, AlertaChat } from "@/lib/chatAlerts";
 import { construirAlertasPedidos, AlertaPedido } from "@/lib/pedidoAlerts";
-import { traerSimsPrepagoActivas } from "@/lib/simQueries";
+import { SimCurrentView } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 
 export async function obtenerConteoAlertas(): Promise<number> {
   const { userId, profile } = await getCurrentProfile();
   const supabase = await createClient();
-  const [sims, alertasChat, alertasPedidos, vistas] = await Promise.all([
-    traerSimsPrepagoActivas(supabase),
+  const [{ data: sims }, alertasChat, alertasPedidos, vistas] = await Promise.all([
+    supabase.from("sim_current_view").select("*"),
     construirAlertasChat(supabase, userId, profile.organization_id),
     construirAlertasPedidos(supabase, userId, profile.organization_id),
     obtenerAlertasVistas(supabase, userId),
   ]);
-  return contarAlertasActivas(sims, vistas) + alertasChat.length + alertasPedidos.length;
+  return contarAlertasActivas((sims ?? []) as SimCurrentView[], vistas) + alertasChat.length + alertasPedidos.length;
 }
 
 export async function obtenerAlertasChatLive(): Promise<AlertaChat[]> {

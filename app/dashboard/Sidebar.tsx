@@ -14,7 +14,6 @@ const NAV_ITEMS: { key: ModuloKey; href: string; label: string; icon: () => Reac
   { key: "alertas", href: "/dashboard/alertas", label: "Alertas", icon: AlertIcon },
   { key: "clientes", href: "/dashboard/clientes", label: "Clientes", icon: ClientesIcon },
   { key: "pedidos", href: "/dashboard/pedidos", label: "Pedidos", icon: PedidosIcon },
-  { key: "pagos", href: "/dashboard/pagos", label: "Pagos adelantados", icon: PagosIcon },
   { key: "chat", href: "/dashboard/chat", label: "Chat", icon: ChatIcon },
   { key: "reportes", href: "/dashboard/reportes", label: "Reportes", icon: ReportesIcon },
 ];
@@ -247,14 +246,6 @@ function PedidosIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <path d="M2.5 5.5 9 2l6.5 3.5v7L9 16l-6.5-3.5v-7Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
       <path d="M2.5 5.5 9 9l6.5-3.5M9 9v7" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function PagosIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M4 2.5h10v13l-2-1.3-1.6 1.3-1.6-1.3-1.6 1.3-1.6-1.3-1.6 1.3v-13Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-      <path d="M6.2 6h5.6M6.2 8.5h5.6M6.2 11h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }

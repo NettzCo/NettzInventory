@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { sincronizarSimproManual, obtenerHistorialSimpro, SimproSyncRunRow } from "./actions";
 import { ResultadoSincronizacion } from "@/lib/integrations/simpro/sync";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function SimproManager({ historialInicial }: { historialInicial: SimproSyncRunRow[] }) {
   const [historial, setHistorial] = useState(historialInicial);
@@ -91,7 +90,7 @@ export default function SimproManager({ historialInicial }: { historialInicial: 
               </div>
             ) : (
               <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "#FDEAEA", color: "var(--state-desactivada)" }}>
-                {traducirError(resultado.errorGeneral)}
+                {resultado.errorGeneral}
               </div>
             )}
           </div>
@@ -118,7 +117,7 @@ export default function SimproManager({ historialInicial }: { historialInicial: 
                   <td className="px-4 py-2.5">{h.disparado_por === "cron" ? "Automática" : "Manual"}</td>
                   <td className="px-4 py-2.5">
                     {h.error_general ? (
-                      <span style={{ color: "var(--state-desactivada)" }}>{traducirError(h.error_general)}</span>
+                      <span style={{ color: "var(--state-desactivada)" }}>{h.error_general}</span>
                     ) : !h.finished_at ? (
                       <span style={{ color: "var(--text-muted)" }}>En curso…</span>
                     ) : (

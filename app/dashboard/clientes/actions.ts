@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/currentProfile";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { tieneModulo } from "@/lib/modules";
-import { encontrarClienteSimilarConTipo } from "@/lib/textMatch";
+import { encontrarClienteSimilar } from "@/lib/textMatch";
 import { INDUSTRIAS, Industria } from "@/lib/types";
 
 async function requireAccesoClientes() {
@@ -31,8 +31,6 @@ export interface ClienteInput {
   industria: string; // "" = sin especificar
   fecha_vinculacion: string; // "" = sin especificar, formato yyyy-mm-dd
   observaciones: string;
-  kam_id: string; // "" = sin KAM asignado
-  broker: string; // texto libre, "" = sin broker
 }
 
 function construirFila(organizationId: string, userId: string, input: ClienteInput) {
@@ -47,8 +45,6 @@ function construirFila(organizationId: string, userId: string, input: ClienteInp
     industria: input.industria ? normalizarIndustria(input.industria) : null,
     fecha_vinculacion: input.fecha_vinculacion?.trim() || null,
     observaciones: input.observaciones?.trim() || null,
-    kam_id: input.kam_id?.trim() || null,
-    broker: input.broker?.trim() || null,
     created_by: userId,
   };
 }
@@ -91,8 +87,6 @@ export async function actualizarCliente(id: string, patch: Partial<ClienteInput>
   if (patch.direccion !== undefined) patchLimpio.direccion = patch.direccion?.trim() || null;
   if (patch.observaciones !== undefined) patchLimpio.observaciones = patch.observaciones?.trim() || null;
   if (patch.nombre !== undefined) patchLimpio.nombre = patch.nombre.trim();
-  if (patch.kam_id !== undefined) patchLimpio.kam_id = patch.kam_id?.trim() || null;
-  if (patch.broker !== undefined) patchLimpio.broker = patch.broker?.trim() || null;
 
   const { error } = await supabase.from("clientes").update(patchLimpio).eq("id", id);
   if (error) return { error: error.message };
@@ -126,9 +120,6 @@ export interface FilaClienteParseada {
   industria: string;
   fecha_vinculacion: string;
   observaciones: string;
-  kam: string;    // nombre escrito en el archivo
-  broker: string; // texto libre, se guarda tal cual
-  kamId: string | null; // resuelto contra los usuarios activos
   error?: string;
   clienteSugerido?: string; // si se parece a uno ya existente, para confirmar antes de crear
   motivoSugerencia?: "nombre" | "documento";
@@ -161,12 +152,11 @@ export async function analizarCargaMasivaClientes(formData: FormData) {
   if (!sheet) return { error: "El archivo no tiene ninguna hoja." };
 
   const supabase = await createClient();
-  const [{ data: existentes }, { data: usuariosActivos }] = await Promise.all([
-    supabase.from("clientes").select("nombre, documento").eq("organization_id", organizationId),
-    supabase.from("profiles").select("id, full_name").eq("organization_id", organizationId).eq("active", true),
-  ]);
+  const { data: existentes } = await supabase
+    .from("clientes")
+    .select("nombre, documento")
+    .eq("organization_id", organizationId);
   const nombresExistentes = (existentes ?? []).map((c) => c.nombre);
-  const usuariosPorNombre = new Map((usuariosActivos ?? []).map((u) => [u.full_name.trim().toLowerCase(), u.id]));
 
   // Mapa de cada forma posible de un NIT/documento -> nombre del cliente,
   // para poder detectar coincidencias sin importar guiones ni el DV.
@@ -200,16 +190,11 @@ export async function analizarCargaMasivaClientes(formData: FormData) {
       ? fechaCelda.toISOString().slice(0, 10)
       : String(fechaCelda ?? "").trim();
     const observaciones = get(9);
-    const kam = get(10);
-    const broker = get(11); // texto libre — no se valida contra usuarios
-    const kamId = kam ? usuariosPorNombre.get(kam.toLowerCase()) ?? null : null;
 
     let error: string | undefined;
     if (nombre.length < 2) error = "El nombre es muy corto.";
     else if (industriaTexto && !normalizarIndustria(industriaTexto)) {
       error = `Industria "${industriaTexto}" no es una opción válida.`;
-    } else if (kam && !kamId) {
-      error = `KAM "${kam}" no coincide con ningún usuario activo.`;
     }
 
     // Primero se compara por documento/NIT (más confiable que el nombre) —
@@ -234,14 +219,9 @@ export async function analizarCargaMasivaClientes(formData: FormData) {
     }
 
     if (!clienteSugerido) {
-      const coincidencia = encontrarClienteSimilarConTipo(nombre, [...nombresExistentes, ...nombresEnEsteArchivo]);
-      if (coincidencia?.tipo === "exacta") {
-        // Mismo texto salvo mayúsculas/tildes/espacios (p. ej. "MOTORASTREO"
-        // vs "Motorastreo") — es sin duda el mismo cliente, no tiene caso
-        // preguntar; se omite para no crear un duplicado.
-        error = `Ya existe como "${coincidencia.nombre}" — se omite para no duplicarlo.`;
-      } else if (coincidencia?.tipo === "aproximada") {
-        clienteSugerido = coincidencia.nombre;
+      const sugerido = encontrarClienteSimilar(nombre, [...nombresExistentes, ...nombresEnEsteArchivo]);
+      if (sugerido) {
+        clienteSugerido = sugerido;
         motivoSugerencia = "nombre";
       }
     }
@@ -258,9 +238,6 @@ export async function analizarCargaMasivaClientes(formData: FormData) {
       industria: industriaTexto,
       fecha_vinculacion,
       observaciones,
-      kam,
-      broker,
-      kamId,
       error,
       clienteSugerido,
       motivoSugerencia,
@@ -295,8 +272,6 @@ export async function confirmarCargaMasivaClientes(filas: FilaClienteParseada[])
         industria: f.industria,
         fecha_vinculacion: f.fecha_vinculacion,
         observaciones: f.observaciones,
-        kam_id: f.kamId ?? "",
-        broker: f.broker,
       })
     );
 

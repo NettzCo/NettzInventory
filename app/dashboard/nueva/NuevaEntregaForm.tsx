@@ -5,7 +5,6 @@ import { useState, useTransition } from "react";
 import { crearEntrega, SimRowInput } from "./actions";
 import { ESTADOS_SIM } from "@/lib/types";
 import ClienteAutocomplete, { ClienteOpcion } from "@/components/ClienteAutocomplete";
-import { traducirError } from "@/lib/friendlyError";
 
 interface UsuarioOpcion {
   id: string;
@@ -89,7 +88,7 @@ export default function NuevaEntregaForm({
         sims: sims.map((s) => ({ ...s, fecha_activacion: s.fecha_activacion || fechaEntrega })),
       });
       if (result?.error) {
-        setError(traducirError(result.error));
+        setError(result.error);
         setExistingSimId(result.existingSimId ?? null);
       }
     });

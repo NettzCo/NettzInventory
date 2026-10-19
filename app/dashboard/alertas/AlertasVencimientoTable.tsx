@@ -7,7 +7,6 @@ import { AlertaVencimiento } from "@/lib/alerts";
 import { formatFecha, formatMoneda, estadoEfectivo } from "@/lib/ui";
 import { marcarAlertasVistas } from "./liveActions";
 import { renovarSim, desactivarSim } from "../sim/[id]/actions";
-import { traducirError } from "@/lib/friendlyError";
 
 export default function AlertasVencimientoTable({ alertas }: { alertas: AlertaVencimiento[] }) {
   const [vistasLocal, setVistasLocal] = useState<Set<string>>(new Set());
@@ -117,7 +116,7 @@ function AccionesVencida({ simId }: { simId: string }) {
     setError(null);
     startTransition(async () => {
       const res = await renovarSim(simId, fecha);
-      if (res?.error) { setError(traducirError(res.error)); return; }
+      if (res?.error) { setError(res.error); return; }
       setAbierto(false);
       router.refresh();
     });
@@ -128,7 +127,7 @@ function AccionesVencida({ simId }: { simId: string }) {
     setError(null);
     startTransition(async () => {
       const res = await desactivarSim(simId, "Desactivada desde Alertas de vencimiento.");
-      if (res?.error) { setError(traducirError(res.error)); return; }
+      if (res?.error) { setError(res.error); return; }
       router.refresh();
     });
   }
