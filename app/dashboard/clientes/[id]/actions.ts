@@ -100,11 +100,21 @@ export async function desactivarCliente(
     // (la relación comercial sigue viva), solo se marca que tiene
     // operadores cortados por cartera — no es lo mismo que haberse ido.
     if (proveedores.length === 0) {
-      await admin
+      const { error: errorCliente, data: filasActualizadas } = await admin
         .from("clientes")
         .update({ active: tipo === "cartera", motivo_desactivacion: tipo })
         .eq("organization_id", profile.organization_id)
-        .eq("nombre", clienteNombre.trim());
+        .eq("nombre", clienteNombre.trim())
+        .select("id");
+      // No se detiene la operación por esto (las SIM ya quedaron
+      // desactivadas, que es lo principal) — pero si falla, se avisa en
+      // vez de quedar en silencio como antes.
+      if (errorCliente) {
+        return { ok: true, cantidad: sims.length, avisoCliente: `Las SIM quedaron desactivadas, pero no se pudo actualizar el estado del cliente: ${errorCliente.message}` };
+      }
+      if (!filasActualizadas || filasActualizadas.length === 0) {
+        return { ok: true, cantidad: sims.length, avisoCliente: `Las SIM quedaron desactivadas, pero no se encontró el registro del cliente "${clienteNombre.trim()}" para actualizar su estado.` };
+      }
     }
 
     revalidatePath(`/dashboard/clientes/${encodeURIComponent(clienteNombre)}`);
@@ -189,12 +199,16 @@ export async function reactivarCliente(operacionId: string) {
     // que marca al cliente en sí como desactivado), se le vuelve a marcar
     // como Activo.
     const fueTodosLosProveedores = !operacion.proveedores_incluidos || (operacion.proveedores_incluidos as string[]).length === 0;
+    let avisoCliente: string | undefined;
     if (fueTodosLosProveedores) {
-      await admin
+      const { error: errorCliente, data: filasActualizadas } = await admin
         .from("clientes")
         .update({ active: true, motivo_desactivacion: null })
         .eq("organization_id", profile.organization_id)
-        .eq("nombre", operacion.cliente_nombre);
+        .eq("nombre", operacion.cliente_nombre)
+        .select("id");
+      if (errorCliente) avisoCliente = `Las SIM se reactivaron, pero no se pudo actualizar el estado del cliente: ${errorCliente.message}`;
+      else if (!filasActualizadas || filasActualizadas.length === 0) avisoCliente = `Las SIM se reactivaron, pero no se encontró el registro del cliente "${operacion.cliente_nombre}" para actualizar su estado.`;
     }
 
     revalidatePath(`/dashboard/clientes/${encodeURIComponent(operacion.cliente_nombre)}`);
@@ -202,7 +216,7 @@ export async function reactivarCliente(operacionId: string) {
     revalidatePath("/dashboard/inventario");
     revalidatePath("/dashboard/alertas");
 
-    return { ok: true, reactivadas: filasRevertir.length };
+    return { ok: true, reactivadas: filasRevertir.length, avisoCliente };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo reactivar al cliente. Intenta de nuevo." };
   }

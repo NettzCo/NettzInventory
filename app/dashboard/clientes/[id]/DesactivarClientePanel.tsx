@@ -45,7 +45,10 @@ export default function DesactivarClientePanel({
       if ("error" in res) {
         setFeedback({ tipo: "error", texto: traducirError(res.error) });
       } else {
-        setFeedback({ tipo: "ok", texto: `Se desactivaron ${res.cantidad} SIM.` });
+        setFeedback({
+          tipo: res.avisoCliente ? "error" : "ok",
+          texto: res.avisoCliente ?? `Se desactivaron ${res.cantidad} SIM.`,
+        });
         setAbierto(false);
       }
     });
@@ -61,7 +64,10 @@ export default function DesactivarClientePanel({
       if ("error" in res) {
         setFeedback({ tipo: "error", texto: traducirError(res.error) });
       } else {
-        setFeedback({ tipo: "ok", texto: `Se reactivaron ${res.reactivadas} SIM a su estado anterior.` });
+        setFeedback({
+          tipo: res.avisoCliente ? "error" : "ok",
+          texto: res.avisoCliente ?? `Se reactivaron ${res.reactivadas} SIM a su estado anterior.`,
+        });
       }
     });
   }
