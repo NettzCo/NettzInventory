@@ -6,6 +6,7 @@ import StatusPill from "@/components/StatusPill";
 import { formatFecha, formatPlan, estadoEfectivo, fechaISODesdeDate } from "@/lib/ui";
 import InventarioTabs from "../InventarioTabs";
 import PageSizeSelect from "./PageSizeSelect";
+import ClienteFilterInput from "@/components/ClienteFilterInput";
 
 const TAMANOS_PAGINA = [50, 100, 150, 200];
 
@@ -67,6 +68,9 @@ export default async function DashboardPage({
     .order("proveedor");
   const proveedores = Array.from(new Set((proveedoresRows ?? []).map((p) => p.proveedor)));
 
+  const { data: clientesRows } = await supabase.from("clientes").select("id, nombre").eq("active", true).order("nombre");
+  const clientesOpciones = clientesRows ?? [];
+
   const activeFilters = Object.entries({ estado, proveedor, cliente, plan_unidad, tipo_plan, precio_min, precio_max, fecha_desde, fecha_hasta })
     .filter(([, v]) => v) as [string, string][];
   const exportHref = "/dashboard/inventario/exportar?" + new URLSearchParams(activeFilters).toString();
@@ -125,7 +129,7 @@ export default async function DashboardPage({
         </FilterField>
 
         <FilterField label="Cliente">
-          <input name="cliente" defaultValue={cliente ?? ""} placeholder="Buscar cliente…" className="input-filter" />
+          <ClienteFilterInput name="cliente" defaultValue={cliente ?? ""} clientes={clientesOpciones} placeholder="Buscar cliente…" className="input-filter" />
         </FilterField>
 
         <FilterField label="Unidad">

@@ -195,6 +195,7 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<ClienteInput>(formToCliente(cliente));
   const [active, setActive] = useState(cliente.active);
+  const [motivoDesactivacion, setMotivoDesactivacion] = useState(cliente.motivo_desactivacion);
   const [removido, setRemovido] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -220,8 +221,21 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
 
   function toggleActivo() {
     const next = !active;
+    const motivoAnterior = motivoDesactivacion;
     setActive(next);
-    startTransition(() => { void actualizarCliente(cliente.id, { active: next }); });
+    // Si se está reactivando a mano desde este interruptor (no desde el
+    // panel "Desactivar cliente" de la hoja de vida), se limpia el motivo
+    // — ya no aplica "por cartera" a un cliente que se acaba de reactivar.
+    if (next) setMotivoDesactivacion(null);
+    setError(null);
+    startTransition(async () => {
+      const res = await actualizarCliente(cliente.id, { active: next, ...(next ? { motivo_desactivacion: null } : {}) });
+      if (res?.error) {
+        setActive(!next); // revierte: no se guardó de verdad
+        setMotivoDesactivacion(motivoAnterior);
+        setError(traducirError(res.error));
+      }
+    });
   }
 
   function eliminar() {
@@ -283,10 +297,14 @@ function ClienteRow({ cliente, usuarios }: { cliente: Cliente; usuarios: Usuario
           onClick={toggleActivo}
           disabled={isPending}
           className="status-pill"
-          style={{ background: active ? "#E7F5EC" : "#EEF0F4", color: active ? "var(--state-activa)" : "var(--text-muted)" }}
+          style={{
+            background: active && motivoDesactivacion === "cartera" ? "#FCEAEF" : active ? "#E7F5EC" : "#EEF0F4",
+            color: active && motivoDesactivacion === "cartera" ? "var(--state-desactivada-cartera)" : active ? "var(--state-activa)" : "var(--text-muted)",
+          }}
         >
-          {active ? "Activo" : "Inactivo"}
+          {active && motivoDesactivacion === "cartera" ? "Activo · cortado por cartera" : active ? "Activo" : "Inactivo"}
         </button>
+        {error && <p className="text-xs mt-1" style={{ color: "var(--state-desactivada)" }}>{error}</p>}
       </td>
       <td className="px-6 py-3 text-right">
         <button onClick={eliminar} disabled={isPending} className="text-sm hover:underline cursor-pointer" style={{ color: "var(--state-desactivada)" }}>

@@ -63,9 +63,12 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
         <h1 className="font-display text-2xl font-semibold">{cliente.nombre}</h1>
         <span
           className="status-pill"
-          style={{ background: cliente.active ? "#E7F5EC" : "#EEF0F4", color: cliente.active ? "var(--state-activa)" : "var(--text-muted)" }}
+          style={{
+            background: cliente.active && cliente.motivo_desactivacion === "cartera" ? "#FCEAEF" : cliente.active ? "#E7F5EC" : "#EEF0F4",
+            color: cliente.active && cliente.motivo_desactivacion === "cartera" ? "var(--state-desactivada-cartera)" : cliente.active ? "var(--state-activa)" : "var(--text-muted)",
+          }}
         >
-          {cliente.active ? "Activo" : "Inactivo"}
+          {cliente.active && cliente.motivo_desactivacion === "cartera" ? "Activo · cortado por cartera" : cliente.active ? "Activo" : "Inactivo"}
         </span>
       </div>
       <p className="text-sm mb-6 font-mono" style={{ color: "var(--text-muted)" }}>{formatCodigoCliente(cliente.codigo)}</p>

@@ -85,8 +85,11 @@ export default function DesactivarClientePanel({
       {desactivacionVigente ? (
         <div>
           <p className="text-sm mb-1">
-            Este cliente está{" "}
-            <strong>{desactivacionVigente.tipo_desactivacion === "cartera" ? "desactivado por cartera" : "desactivado totalmente"}</strong>
+            {desactivacionVigente.tipo_desactivacion === "cartera" ? (
+              <>Este cliente sigue <strong>Activo</strong>, pero tiene sus SIM <strong>cortadas por cartera</strong></>
+            ) : (
+              <>Este cliente está <strong>desactivado totalmente</strong></>
+            )}
             {desactivacionVigente.proveedores_incluidos && desactivacionVigente.proveedores_incluidos.length > 0
               ? ` (proveedores: ${desactivacionVigente.proveedores_incluidos.join(", ")})`
               : " (todos los proveedores)"}

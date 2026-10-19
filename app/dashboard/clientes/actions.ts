@@ -69,36 +69,40 @@ export async function crearCliente(input: ClienteInput) {
   return { ok: true };
 }
 
-export async function actualizarCliente(id: string, patch: Partial<ClienteInput> & { active?: boolean }) {
-  await requireAccesoClientes();
-  const supabase = await createClient();
+export async function actualizarCliente(id: string, patch: Partial<ClienteInput> & { active?: boolean; motivo_desactivacion?: "total" | "cartera" | null }) {
+  try {
+    await requireAccesoClientes();
+    const supabase = await createClient();
 
-  if (patch.nombre !== undefined && !patch.nombre.trim()) {
-    return { error: "El nombre no puede quedar vacío." };
+    if (patch.nombre !== undefined && !patch.nombre.trim()) {
+      return { error: "El nombre no puede quedar vacío." };
+    }
+
+    const patchLimpio: Record<string, unknown> = { ...patch };
+    if (patch.industria !== undefined) {
+      patchLimpio.industria = patch.industria ? normalizarIndustria(patch.industria) : null;
+    }
+    if (patch.fecha_vinculacion !== undefined) {
+      patchLimpio.fecha_vinculacion = patch.fecha_vinculacion || null;
+    }
+    if (patch.contacto_responsable !== undefined) patchLimpio.contacto_responsable = patch.contacto_responsable?.trim() || null;
+    if (patch.documento !== undefined) patchLimpio.documento = patch.documento?.trim() || null;
+    if (patch.telefono !== undefined) patchLimpio.telefono = patch.telefono?.trim() || null;
+    if (patch.correo !== undefined) patchLimpio.correo = patch.correo?.trim() || null;
+    if (patch.direccion !== undefined) patchLimpio.direccion = patch.direccion?.trim() || null;
+    if (patch.observaciones !== undefined) patchLimpio.observaciones = patch.observaciones?.trim() || null;
+    if (patch.nombre !== undefined) patchLimpio.nombre = patch.nombre.trim();
+    if (patch.kam_id !== undefined) patchLimpio.kam_id = patch.kam_id?.trim() || null;
+    if (patch.broker !== undefined) patchLimpio.broker = patch.broker?.trim() || null;
+
+    const { error } = await supabase.from("clientes").update(patchLimpio).eq("id", id);
+    if (error) return { error: error.message };
+
+    revalidatePath("/dashboard/clientes");
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo actualizar el cliente. Intenta de nuevo." };
   }
-
-  const patchLimpio: Record<string, unknown> = { ...patch };
-  if (patch.industria !== undefined) {
-    patchLimpio.industria = patch.industria ? normalizarIndustria(patch.industria) : null;
-  }
-  if (patch.fecha_vinculacion !== undefined) {
-    patchLimpio.fecha_vinculacion = patch.fecha_vinculacion || null;
-  }
-  if (patch.contacto_responsable !== undefined) patchLimpio.contacto_responsable = patch.contacto_responsable?.trim() || null;
-  if (patch.documento !== undefined) patchLimpio.documento = patch.documento?.trim() || null;
-  if (patch.telefono !== undefined) patchLimpio.telefono = patch.telefono?.trim() || null;
-  if (patch.correo !== undefined) patchLimpio.correo = patch.correo?.trim() || null;
-  if (patch.direccion !== undefined) patchLimpio.direccion = patch.direccion?.trim() || null;
-  if (patch.observaciones !== undefined) patchLimpio.observaciones = patch.observaciones?.trim() || null;
-  if (patch.nombre !== undefined) patchLimpio.nombre = patch.nombre.trim();
-  if (patch.kam_id !== undefined) patchLimpio.kam_id = patch.kam_id?.trim() || null;
-  if (patch.broker !== undefined) patchLimpio.broker = patch.broker?.trim() || null;
-
-  const { error } = await supabase.from("clientes").update(patchLimpio).eq("id", id);
-  if (error) return { error: error.message };
-
-  revalidatePath("/dashboard/clientes");
-  return { ok: true };
 }
 
 export async function eliminarCliente(id: string) {

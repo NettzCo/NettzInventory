@@ -308,6 +308,10 @@ create table if not exists clientes (
 
 -- Por si la tabla ya existía de antes sin estas columnas.
 alter table clientes add column if not exists kam_id uuid references profiles(id);
+-- Motivo de la desactivación (solo aplica cuando active=false y vino del
+-- panel "Desactivar cliente", no de apagar el interruptor a mano).
+alter table clientes add column if not exists motivo_desactivacion text
+  check (motivo_desactivacion in ('total', 'cartera'));
 alter table clientes add column if not exists broker_id uuid references profiles(id);
 alter table clientes add column if not exists broker text;
 

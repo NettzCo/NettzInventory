@@ -91,6 +91,22 @@ export async function desactivarCliente(
     const { error: errorInsert } = await admin.from("sim_status_history").insert(filas);
     if (errorInsert) return { error: errorInsert.message };
 
+    // El registro del cliente en sí solo se toca cuando se desactivaron
+    // TODOS sus proveedores — si solo se desactivó uno (ej. solo Claro),
+    // el cliente sigue con servicio activo por los demás.
+    //
+    // "Total" (canceló del todo) → el cliente pasa a Inactivo de verdad.
+    // "Cartera" (atraso en pago) → el cliente SIGUE Activo como cliente
+    // (la relación comercial sigue viva), solo se marca que tiene
+    // operadores cortados por cartera — no es lo mismo que haberse ido.
+    if (proveedores.length === 0) {
+      await admin
+        .from("clientes")
+        .update({ active: tipo === "cartera", motivo_desactivacion: tipo })
+        .eq("organization_id", profile.organization_id)
+        .eq("nombre", clienteNombre.trim());
+    }
+
     revalidatePath(`/dashboard/clientes/${encodeURIComponent(clienteNombre)}`);
     revalidatePath("/dashboard/clientes");
     revalidatePath("/dashboard/inventario");
@@ -132,7 +148,7 @@ export async function reactivarCliente(operacionId: string) {
     const admin = createAdminClient();
     const { data: operacion } = await admin
       .from("bulk_operations")
-      .select("id, organization_id, cliente_nombre, revertida_at")
+      .select("id, organization_id, cliente_nombre, revertida_at, proveedores_incluidos")
       .eq("id", operacionId)
       .maybeSingle();
 
@@ -168,6 +184,18 @@ export async function reactivarCliente(operacionId: string) {
       .update({ revertida_at: new Date().toISOString(), revertida_by: userId })
       .eq("id", operacionId);
     if (errorMarcar) return { error: errorMarcar.message };
+
+    // Si esta desactivación había sido de TODOS los proveedores (la única
+    // que marca al cliente en sí como desactivado), se le vuelve a marcar
+    // como Activo.
+    const fueTodosLosProveedores = !operacion.proveedores_incluidos || (operacion.proveedores_incluidos as string[]).length === 0;
+    if (fueTodosLosProveedores) {
+      await admin
+        .from("clientes")
+        .update({ active: true, motivo_desactivacion: null })
+        .eq("organization_id", profile.organization_id)
+        .eq("nombre", operacion.cliente_nombre);
+    }
 
     revalidatePath(`/dashboard/clientes/${encodeURIComponent(operacion.cliente_nombre)}`);
     revalidatePath("/dashboard/clientes");

@@ -91,6 +91,11 @@ export interface Cliente {
   fecha_vinculacion: string | null;
   observaciones: string | null;
   active: boolean;
+  // Solo tiene valor cuando active=false Y la desactivación vino del panel
+  // "Desactivar cliente" (no de apagar el interruptor Activo/Inactivo a
+  // mano) — dice el motivo, para distinguir "Desactivado por cartera" de
+  // una desactivación total/normal en la lista de clientes.
+  motivo_desactivacion: "total" | "cartera" | null;
   created_at: string;
   created_by: string;
   kam_id: string | null;

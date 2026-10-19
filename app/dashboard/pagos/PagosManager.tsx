@@ -49,6 +49,7 @@ export default function PagosManager({
   const [fechaPago, setFechaPago] = useState(() => hoyColombia());
   const [nota, setNota] = useState("");
   const [filas, setFilas] = useState<FilaFormulario[]>([filaVacia()]);
+  const [archivosAAdjuntar, setArchivosAAdjuntar] = useState<File[]>([]);
   const [errorForm, setErrorForm] = useState<string | null>(errorInicial ? traducirError(errorInicial) : null);
   const [isPending, startTransition] = useTransition();
   const [pagoCreado, setPagoCreado] = useState<{ id: string; numeroComprobante: string } | null>(null);
@@ -118,6 +119,19 @@ export default function PagosManager({
       });
       if (res.error) { setErrorForm(traducirError(res.error)); return; }
       setPagoCreado({ id: res.pagoId!, numeroComprobante: res.numeroComprobante! });
+
+      // Si se eligieron fotos en el formulario (antes de que existiera el
+      // pago), se suben ahora que ya hay un id de pago al cual atarlas.
+      if (archivosAAdjuntar.length > 0) {
+        setSubiendoComprobante(true);
+        const fd = new FormData();
+        for (const file of archivosAAdjuntar) fd.append("files", file);
+        const resArchivos = await subirComprobantePago(res.pagoId!, fd);
+        setSubiendoComprobante(false);
+        if (!resArchivos.error) setArchivosPago(resArchivos.archivos ?? []);
+        setArchivosAAdjuntar([]);
+      }
+
       const actualizados = await listarPagos();
       if (!("error" in actualizados)) setPagos(actualizados);
     });
@@ -138,6 +152,7 @@ export default function PagosManager({
     setMostrarFormulario(true);
     setPagoCreado(null);
     setArchivosPago([]);
+    setArchivosAAdjuntar([]);
     setClienteNombre("");
     setFechaPago(hoyColombia());
     setNota("");
@@ -266,6 +281,33 @@ export default function PagosManager({
               <div className="mb-4">
                 <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Nota (opcional)</label>
                 <input className="input" value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej: pagado por transferencia Bancolombia" />
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Foto(s) del pago del cliente (opcional)</label>
+                <label className="inline-block rounded-lg border px-4 py-2.5 text-sm font-medium bg-white cursor-pointer" style={{ borderColor: "var(--border)" }}>
+                  {archivosAAdjuntar.length > 0 ? `${archivosAAdjuntar.length} archivo${archivosAAdjuntar.length === 1 ? "" : "s"} elegido${archivosAAdjuntar.length === 1 ? "" : "s"}` : "Elegir foto(s) o PDF"}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => setArchivosAAdjuntar((prev) => [...prev, ...Array.from(e.target.files ?? [])])}
+                  />
+                </label>
+                {archivosAAdjuntar.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {archivosAAdjuntar.map((f, i) => (
+                      <span key={i} className="text-xs rounded-full px-2.5 py-1 flex items-center gap-1.5" style={{ background: "var(--bg)" }}>
+                        {f.name}
+                        <button onClick={() => setArchivosAAdjuntar((prev) => prev.filter((_, idx) => idx !== i))} className="font-bold" style={{ color: "var(--state-desactivada)" }}>
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>También puedes adjuntar más después, al consultar el pago.</p>
               </div>
 
               {errorForm && (
