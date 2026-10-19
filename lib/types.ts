@@ -14,6 +14,7 @@ export type EstadoSim =
   | "Inactiva"
   | "Lista para activar"
   | "Activa"
+  | "Sin número corto"
   | "Desactivada temporal"
   | "Desactivada"
   | "Desactivada por cartera"
@@ -23,6 +24,7 @@ export const ESTADOS_SIM: EstadoSim[] = [
   "Inactiva",
   "Lista para activar",
   "Activa",
+  "Sin número corto",
   "Desactivada temporal",
   "Desactivada",
   "Desactivada por cartera",
@@ -127,6 +129,20 @@ export interface SimCard {
   created_by: string;
 }
 
+// Corresponde a la vista sim_short_number_status_view — dice, por cada
+// número corto que alguna vez existió, a qué SIM pertenece hoy (si a
+// alguna) o si quedó disponible para reasignar.
+export interface SimShortNumberStatus {
+  organization_id: string;
+  numero_corto: string;
+  sim_id_actual: string | null;
+  icc_actual: string | null;
+  estado_actual: EstadoSim | null;
+  cliente_actual: string | null;
+  proveedor: string | null;
+  disponible: boolean;
+}
+
 export interface SimShortNumber {
   id: string;
   sim_id: string;
@@ -150,7 +166,7 @@ export interface SimStatusHistory {
 export interface BulkOperation {
   id: string;
   organization_id: string;
-  tipo: "cambio_estado" | "registro_entrega";
+  tipo: "cambio_estado" | "registro_entrega" | "reasignacion_numero";
   estado_nuevo: EstadoSim | null;
   cantidad_sims: number;
   nota: string | null;

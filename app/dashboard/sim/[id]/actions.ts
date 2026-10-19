@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/currentProfile";
 import { revalidatePath } from "next/cache";
 import { tieneModulo } from "@/lib/modules";
+import { clasificarNumeroCorto, liberarYDesactivarOrigen } from "@/lib/numeroCortoSwap";
+import { resolverEstadoAGuardar, activarSiEsperabaNumero } from "@/lib/estadoSinNumero";
 
 async function requireEditor() {
   const { userId, profile } = await getCurrentProfile();
@@ -19,9 +21,12 @@ export async function cambiarEstado(simId: string, estado: string, nota: string)
 
   if (!estado) return { error: "Selecciona un estado." };
 
+  const { data: sim } = await supabase.from("sim_current_view").select("proveedor, numero_corto_actual").eq("id", simId).maybeSingle();
+  const estadoReal = resolverEstadoAGuardar({ estadoDeseado: estado, proveedor: sim?.proveedor ?? null, tieneNumeroCorto: !!sim?.numero_corto_actual });
+
   const { error } = await supabase.from("sim_status_history").insert({
     sim_id: simId,
-    estado,
+    estado: estadoReal,
     changed_by: userId,
     nota: nota?.trim() || null,
   });
@@ -29,14 +34,47 @@ export async function cambiarEstado(simId: string, estado: string, nota: string)
   if (error) return { error: error.message };
 
   revalidatePath(`/dashboard/sim/${simId}`);
-  return { ok: true };
+  return {
+    ok: true,
+    aviso: estadoReal !== estado ? `Se guardó como "${estadoReal}" en vez de "Activa": esta SIM Claro todavía no tiene número corto asignado.` : undefined,
+  };
+}
+
+/** Para que el panel pueda mostrar, mientras la persona escribe, a quién
+ *  pertenece hoy ese número (o si es nuevo/está libre) — antes de guardar. */
+export async function consultarNumeroCorto(simId: string, numeroCorto: string) {
+  const { profile } = await requireEditor();
+  const supabase = await createClient();
+
+  const numero = numeroCorto?.trim();
+  if (!numero) return { estadoOrigen: null };
+
+  const clasificacion = await clasificarNumeroCorto(supabase, profile.organization_id, numero);
+  if (clasificacion.estadoOrigen === "asignado" && clasificacion.simIdOrigen === simId) {
+    return { estadoOrigen: "misma_sim" as const };
+  }
+  return clasificacion;
 }
 
 export async function asignarNumeroCorto(simId: string, numeroCorto: string) {
   const { userId, profile } = await requireEditor();
   const supabase = await createClient();
 
-  if (!numeroCorto?.trim()) return { error: "Ingresa el nuevo número corto." };
+  const numero = numeroCorto?.trim();
+  if (!numero) return { error: "Ingresa el nuevo número corto." };
+
+  const { data: estaSim } = await supabase.from("sim_current_view").select("icc, estado_actual").eq("id", simId).maybeSingle();
+
+  // Si ese número corto hoy es de OTRA SIM, se puede tomar sin importar en
+  // qué estado esté — como efecto, esa otra SIM queda "Desactivada"
+  // automáticamente (misma regla que el módulo de "Reasignar números").
+  const origen = await clasificarNumeroCorto(supabase, profile.organization_id, numero);
+  let aviso: string | null = null;
+  if (origen.estadoOrigen === "asignado" && origen.simIdOrigen !== simId) {
+    const { error: errorOrigen } = await liberarYDesactivarOrigen(supabase, userId, origen, numero, estaSim?.icc ?? simId);
+    if (errorOrigen) return { error: errorOrigen };
+    aviso = `El número ${numero} se le quitó al ICC ${origen.iccOrigen} (cliente: ${origen.clienteOrigen ?? "sin cliente"}), que quedó Desactivada.`;
+  }
 
   const { error: closeError } = await supabase
     .from("sim_short_numbers")
@@ -49,14 +87,20 @@ export async function asignarNumeroCorto(simId: string, numeroCorto: string) {
   const { error } = await supabase.from("sim_short_numbers").insert({
     sim_id: simId,
     organization_id: profile.organization_id,
-    numero_corto: numeroCorto.trim(),
+    numero_corto: numero,
     assigned_by: userId,
   });
 
   if (error) return { error: error.message };
 
+  // Esta SIM estaba "Sin número corto" esperando justo esto — pasa a
+  // "Activa" sola, sin que haga falta cambiarle el estado a mano.
+  const { error: errorActivar } = await activarSiEsperabaNumero(supabase, simId, userId, estaSim?.estado_actual);
+  if (errorActivar) return { error: errorActivar };
+
   revalidatePath(`/dashboard/sim/${simId}`);
-  return { ok: true };
+  if (origen.simIdOrigen) revalidatePath(`/dashboard/sim/${origen.simIdOrigen}`);
+  return { ok: true, aviso };
 }
 
 export async function actualizarDetalles(simId: string, patch: { apn?: string | null; observaciones?: string | null }) {

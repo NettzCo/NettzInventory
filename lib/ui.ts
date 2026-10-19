@@ -46,6 +46,7 @@ export const ESTADO_COLOR: Record<EstadoSim, string> = {
   Inactiva: "var(--state-inactiva)",
   "Lista para activar": "var(--state-lista)",
   Activa: "var(--state-activa)",
+  "Sin número corto": "var(--state-sin-numero)",
   "Desactivada temporal": "var(--state-desactivada-temp)",
   Desactivada: "var(--state-desactivada)",
   "Desactivada por cartera": "var(--state-desactivada-cartera)",

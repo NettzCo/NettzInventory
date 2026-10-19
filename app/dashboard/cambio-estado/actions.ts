@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { tieneModulo } from "@/lib/modules";
 import { ESTADOS_SIM, EstadoSim } from "@/lib/types";
 import { fechaColombiaATimestamp } from "@/lib/ui";
+import { resolverEstadoAGuardar } from "@/lib/estadoSinNumero";
 import { revalidatePath } from "next/cache";
 
 interface SimEncontrada {
@@ -12,6 +13,8 @@ interface SimEncontrada {
   icc: string;
   estado_actual: EstadoSim | null;
   entregada: boolean;
+  proveedor: string;
+  numero_corto_actual: string | null;
 }
 
 async function buscarSimsPorIcc(
@@ -21,7 +24,7 @@ async function buscarSimsPorIcc(
 ): Promise<Map<string, SimEncontrada>> {
   const { data: sims } = await supabase
     .from("sim_current_view")
-    .select("id, icc, estado_actual, cliente_actual")
+    .select("id, icc, estado_actual, cliente_actual, proveedor, numero_corto_actual")
     .eq("organization_id", organizationId)
     .in("icc", iccs);
 
@@ -32,6 +35,8 @@ async function buscarSimsPorIcc(
       icc: s.icc,
       estado_actual: s.estado_actual,
       entregada: s.cliente_actual !== null,
+      proveedor: s.proveedor,
+      numero_corto_actual: s.numero_corto_actual,
     });
   }
   return mapa;
@@ -65,6 +70,7 @@ export interface ResultadoCambioMasivo {
   ok?: boolean;
   aplicadas?: number;
   omitidas?: { icc: string; motivo: string }[];
+  avisos?: { icc: string; motivo: string }[];
 }
 
 export interface AsignacionRapida {
@@ -223,18 +229,27 @@ export async function aplicarCambios(iccsTexto: string, opciones: OpcionesCambio
       if (errorAsignar) return { error: errorAsignar.message };
     }
 
+    const avisos: { icc: string; motivo: string }[] = [];
+
     if (debeRegistrarHistorial) {
-      const filas = aplicables.map((sim) => ({
-        sim_id: sim.id,
-        estado: opciones.cambiarEstado ? opciones.nuevoEstado : sim.estado_actual,
-        estado_anterior: sim.estado_actual,
-        bulk_operation_id: operacion.id,
-        changed_by: userId,
-        nota: nota.trim() || null,
-        ...(opciones.cambiarFechaActivacion && opciones.fechaActivacion
-          ? { changed_at: fechaColombiaATimestamp(opciones.fechaActivacion) }
-          : {}),
-      }));
+      const filas = aplicables.map((sim) => {
+        const estadoDeseado = opciones.cambiarEstado ? opciones.nuevoEstado! : (sim.estado_actual as string);
+        const estadoReal = resolverEstadoAGuardar({ estadoDeseado, proveedor: sim.proveedor, tieneNumeroCorto: !!sim.numero_corto_actual });
+        if (estadoReal !== estadoDeseado) {
+          avisos.push({ icc: sim.icc, motivo: `Se guardó como "${estadoReal}" en vez de "Activa": todavía no tiene número corto asignado.` });
+        }
+        return {
+          sim_id: sim.id,
+          estado: estadoReal,
+          estado_anterior: sim.estado_actual,
+          bulk_operation_id: operacion.id,
+          changed_by: userId,
+          nota: nota.trim() || null,
+          ...(opciones.cambiarFechaActivacion && opciones.fechaActivacion
+            ? { changed_at: fechaColombiaATimestamp(opciones.fechaActivacion) }
+            : {}),
+        };
+      });
 
       const { error: errorInsert } = await supabase.from("sim_status_history").insert(filas);
       if (errorInsert) return { error: errorInsert.message };
@@ -245,7 +260,7 @@ export async function aplicarCambios(iccsTexto: string, opciones: OpcionesCambio
     revalidatePath("/dashboard/alertas");
     revalidatePath("/dashboard/nueva");
 
-    return { ok: true, aplicadas: aplicables.length, omitidas };
+    return { ok: true, aplicadas: aplicables.length, omitidas, avisos: avisos.length > 0 ? avisos : undefined };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo aplicar el cambio. Intenta de nuevo." };
   }

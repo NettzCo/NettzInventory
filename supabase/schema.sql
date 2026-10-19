@@ -652,8 +652,18 @@ create table if not exists sim_short_numbers (
   numero_corto text not null,
   assigned_at timestamptz not null default now(),
   unassigned_at timestamptz,
-  assigned_by uuid not null references profiles(id)
+  assigned_by uuid not null references profiles(id),
+  -- Para poder "Deshacer" una reasignación hecha desde el módulo
+  -- "Reasignar números": bulk_operation_id marca el registro NUEVO que
+  -- abrió la operación; closed_by_bulk_operation_id marca el registro
+  -- ANTERIOR que esa misma operación cerró (para poder reabrirlo). FK se
+  -- agrega más abajo, después de crear bulk_operations.
+  bulk_operation_id uuid,
+  closed_by_bulk_operation_id uuid
 );
+
+create index if not exists idx_short_numbers_bulk_operation on sim_short_numbers (bulk_operation_id);
+create index if not exists idx_short_numbers_closed_by_bulk_operation on sim_short_numbers (closed_by_bulk_operation_id);
 
 -- Por si la tabla ya existía de antes sin esta columna.
 alter table sim_short_numbers add column if not exists organization_id uuid references organizations(id) on delete cascade;
@@ -680,7 +690,8 @@ create table if not exists sim_status_history (
   id uuid primary key default gen_random_uuid(),
   sim_id uuid not null references sim_cards(id) on delete cascade,
   estado text not null check (estado in (
-    'Inactiva', 'Lista para activar', 'Activa', 'Desactivada temporal', 'Desactivada', 'Desactivada por cartera'
+    'Inactiva', 'Lista para activar', 'Activa', 'Sin número corto',
+    'Desactivada temporal', 'Desactivada', 'Desactivada por cartera'
   )),
   estado_anterior text, -- el que tenía justo antes de este cambio (permite deshacer sin adivinar)
   bulk_operation_id uuid, -- si este cambio vino de una operación masiva; FK se agrega más abajo
@@ -725,6 +736,11 @@ alter table sim_assignments add constraint sim_assignments_bulk_operation_id_fke
   foreign key (bulk_operation_id) references bulk_operations(id) on delete set null;
 alter table sim_assignments add constraint sim_assignments_ended_by_bulk_operation_id_fkey
   foreign key (ended_by_bulk_operation_id) references bulk_operations(id) on delete set null;
+
+alter table sim_short_numbers add constraint sim_short_numbers_bulk_operation_id_fkey
+  foreign key (bulk_operation_id) references bulk_operations(id) on delete set null;
+alter table sim_short_numbers add constraint sim_short_numbers_closed_by_bulk_operation_id_fkey
+  foreign key (closed_by_bulk_operation_id) references bulk_operations(id) on delete set null;
 
 alter table bulk_operations enable row level security;
 
@@ -1134,6 +1150,48 @@ create policy "super admin reads audit log" on audit_log for select
 
 create policy "insert audit log" on audit_log for insert
   with check (organization_id = current_org_id());
+
+-- ---------------------------------------------------------
+-- NÚMEROS CORTOS DISPONIBLES PARA REASIGNAR
+-- Por cada número corto que alguna vez existió en la organización, dice:
+--   - si hoy está asignado a una SIM (icc_actual, estado_actual, cliente_actual)
+--   - o si no tiene ningún ICC asignado en este momento (disponible = true)
+-- El proveedor se toma de la SIM que lo tiene hoy, o si nadie lo tiene, del
+-- último ICC que lo tuvo (para poder seguir filtrando "solo Claro" aunque
+-- el número ya no esté atado a ninguna SIM).
+-- ---------------------------------------------------------
+create or replace view sim_short_number_status_view
+with (security_invoker = true) as
+with numeros as (
+  select distinct organization_id, numero_corto from sim_short_numbers
+),
+tenedor_actual as (
+  select organization_id, numero_corto, sim_id
+  from sim_short_numbers
+  where unassigned_at is null
+),
+ultimo_historico as (
+  select organization_id, numero_corto, sim_id,
+    row_number() over (partition by organization_id, numero_corto order by assigned_at desc) as rn
+  from sim_short_numbers
+)
+select
+  n.organization_id,
+  n.numero_corto,
+  ta.sim_id                                       as sim_id_actual,
+  scv.icc                                         as icc_actual,
+  scv.estado_actual,
+  scv.cliente_actual,
+  coalesce(sc_actual.proveedor, sc_ultimo.proveedor) as proveedor,
+  (ta.sim_id is null)                              as disponible
+from numeros n
+left join tenedor_actual ta
+  on ta.organization_id = n.organization_id and ta.numero_corto = n.numero_corto
+left join sim_current_view scv on scv.id = ta.sim_id
+left join sim_cards sc_actual on sc_actual.id = ta.sim_id
+left join ultimo_historico uh
+  on uh.organization_id = n.organization_id and uh.numero_corto = n.numero_corto and uh.rn = 1
+left join sim_cards sc_ultimo on sc_ultimo.id = uh.sim_id;
 
 -- Semilla inicial de proveedores de Nettz (puedes agregar/eliminar desde el panel)
 insert into providers (organization_id, name)
