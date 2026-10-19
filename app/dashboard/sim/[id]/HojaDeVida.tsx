@@ -8,6 +8,7 @@ import StatusPill from "@/components/StatusPill";
 import { formatFecha, formatFechaHora, formatMoneda, estadoEfectivo } from "@/lib/ui";
 import { cambiarEstado, asignarNumeroCorto, reasignarCliente, actualizarDetalles, renovarSim, desactivarSim, ReasignacionInput } from "./actions";
 import ClienteAutocomplete, { ClienteOpcion } from "@/components/ClienteAutocomplete";
+import { traducirError } from "@/lib/friendlyError";
 
 type Panel = null | "estado" | "numero" | "cliente" | "detalles" | "renovar";
 
@@ -188,7 +189,7 @@ function BotonDesactivar({ simId }: { simId: string }) {
     setError(null);
     startTransition(async () => {
       const res = await desactivarSim(simId, "Desactivada desde la hoja de vida.");
-      if (res?.error) setError(res.error);
+      if (res?.error) setError(traducirError(res.error));
     });
   }
 
@@ -228,7 +229,7 @@ function PanelRenovar({ simId, onClose }: { simId: string; onClose: () => void }
             startTransition(async () => {
               setError(null);
               const res = await renovarSim(simId, fecha);
-              if (res?.error) setError(res.error);
+              if (res?.error) setError(traducirError(res.error));
               else onClose();
             })
           }
@@ -280,7 +281,7 @@ function PanelEstado({ simId, onClose }: { simId: string; onClose: () => void })
             startTransition(async () => {
               setError(null);
               const res = await cambiarEstado(simId, estado, nota);
-              if (res?.error) setError(res.error);
+              if (res?.error) setError(traducirError(res.error));
               else onClose();
             })
           }
@@ -319,7 +320,7 @@ function PanelNumero({ simId, actual, onClose }: { simId: string; actual: string
             startTransition(async () => {
               setError(null);
               const res = await asignarNumeroCorto(simId, numero);
-              if (res?.error) setError(res.error);
+              if (res?.error) setError(traducirError(res.error));
               else onClose();
             })
           }
@@ -373,7 +374,7 @@ function PanelDetalles({
             startTransition(async () => {
               setError(null);
               const res = await actualizarDetalles(simId, { apn: apn || null, observaciones: observaciones || null });
-              if (res?.error) setError(res.error);
+              if (res?.error) setError(traducirError(res.error));
               else onClose();
             })
           }
@@ -470,7 +471,7 @@ function PanelCliente({
           startTransition(async () => {
             setError(null);
             const res = await reasignarCliente(simId, form);
-            if (res?.error) setError(res.error);
+            if (res?.error) setError(traducirError(res.error));
             else onClose();
           })
         }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { login } from "./actions";
+import { traducirError } from "@/lib/friendlyError";
 
 export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +13,7 @@ export default function LoginForm() {
     setError(null);
     startTransition(async () => {
       const result = await login(formData);
-      if (result?.error) setError(result.error);
+      if (result?.error) setError(traducirError(result.error));
     });
   }
 

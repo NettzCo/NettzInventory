@@ -8,6 +8,13 @@ import CargaMasivaForm from "./CargaMasivaForm";
 import HistorialEntregas from "./HistorialEntregas";
 import InventarioTabs from "../InventarioTabs";
 
+// Cargas masivas grandes (miles de filas) hacen muchas operaciones seguidas
+// contra la base de datos — sin esto, Vercel corta la función a los pocos
+// segundos y la página se "revienta" a mitad de la carga. 300s = 5 minutos,
+// el máximo permitido en el plan Pro de Vercel (en el plan Hobby gratuito,
+// el máximo real es 60s aunque se pida más).
+export const maxDuration = 300;
+
 export default async function NuevaEntregaPage() {
   const { userId, profile } = await getCurrentProfile();
   if (!tieneModulo(profile, "inventario")) {

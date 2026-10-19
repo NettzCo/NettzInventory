@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Pedido } from "@/lib/types";
 import { formatFechaHora } from "@/lib/ui";
 import { crearPedido, editarPedido, eliminarPedido, marcarPedidoEnviado, rechazarPedido, subirComprobante, PedidoInput } from "./actions";
+import { traducirError } from "@/lib/friendlyError";
 
 interface Opcion {
   id: string;
@@ -292,7 +293,7 @@ function FormularioPedido({
     startTransition(async () => {
       const res = await crearPedido(form);
       if (res?.error) {
-        setError(res.error);
+        setError(traducirError(res.error));
       } else {
         setSuccess(true);
         setForm(CAMPOS_VACIOS);
@@ -393,7 +394,7 @@ function FilaPedido({
     setError(null);
     startTransition(async () => {
       const res = await editarPedido(pedido.id, form);
-      if (res?.error) setError(res.error);
+      if (res?.error) setError(traducirError(res.error));
       else {
         onActualizado({ ...pedido, ...form, cliente_id: form.cliente_id || null, cantidad: Number(form.cantidad), apn: form.apn || null, contacto_correo: form.contacto_correo || null, observaciones: form.observaciones || null });
         setEditando(false);
@@ -406,7 +407,7 @@ function FilaPedido({
     setError(null);
     startTransition(async () => {
       const res = await eliminarPedido(pedido.id);
-      if (res?.error) setError(res.error);
+      if (res?.error) setError(traducirError(res.error));
       else onEliminado(pedido.id);
     });
   }
@@ -556,12 +557,12 @@ function ConfirmarEnvioRow({
         const formData = new FormData();
         formData.append("file", archivo);
         const subida = await subirComprobante(pedidoId, formData);
-        if (subida.error) { setError(subida.error); return; }
+        if (subida.error) { setError(traducirError(subida.error)); return; }
         comprobanteUrl = subida.url ?? null;
       }
 
       const res = await marcarPedidoEnviado(pedidoId, fecha, comprobanteUrl);
-      if (res?.error) { setError(res.error); return; }
+      if (res?.error) { setError(traducirError(res.error)); return; }
 
       onConfirmado({ ...pedidoBase, estado: "Enviado", enviado_at: new Date(fecha).toISOString(), comprobante_url: comprobanteUrl });
     });
@@ -615,7 +616,7 @@ function RechazarPedidoRow({
     }
     startTransition(async () => {
       const res = await rechazarPedido(pedidoId, motivo);
-      if (res?.error) { setError(res.error); return; }
+      if (res?.error) { setError(traducirError(res.error)); return; }
       onRechazado({
         ...pedidoBase,
         estado: "Rechazado",

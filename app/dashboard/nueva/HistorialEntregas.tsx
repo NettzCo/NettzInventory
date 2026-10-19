@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { BulkOperation } from "@/lib/types";
 import { formatFechaHora } from "@/lib/ui";
 import { revertirOperacionMasiva } from "../cambio-estado/actions";
+import { traducirError } from "@/lib/friendlyError";
 
 export default function HistorialEntregas({
   operaciones,
@@ -83,7 +84,7 @@ function FilaEntrega({
     setError(null);
     startTransition(async () => {
       const res = await revertirOperacionMasiva(operacion.id);
-      if (res?.error) { setError(res.error); return; }
+      if (res?.error) { setError(traducirError(res.error)); return; }
       onActualizada({ ...operacion, revertida_at: new Date().toISOString(), revertida_by: currentUserId });
     });
   }

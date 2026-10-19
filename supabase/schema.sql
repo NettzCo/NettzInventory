@@ -298,10 +298,18 @@ create table if not exists clientes (
   fecha_vinculacion date,
   observaciones text,
   active boolean not null default true,
+  kam_id uuid references profiles(id),    -- Key Account Manager responsable del cliente (debe ser un usuario registrado)
+  broker_id uuid references profiles(id), -- ya no se usa — se dejó la columna por compatibilidad, ver "broker" abajo
+  broker text,                            -- broker/intermediario asociado — texto libre, no necesariamente un usuario del sistema
   created_at timestamptz not null default now(),
   created_by uuid not null references profiles(id),
   unique (organization_id, codigo)
 );
+
+-- Por si la tabla ya existía de antes sin estas columnas.
+alter table clientes add column if not exists kam_id uuid references profiles(id);
+alter table clientes add column if not exists broker_id uuid references profiles(id);
+alter table clientes add column if not exists broker text;
 
 -- Asigna el código correlativo automáticamente al crear un cliente, si no
 -- se especifica uno (nunca se debería especificar manualmente)
@@ -508,6 +516,82 @@ create policy "write own sim alert reads" on sim_alert_reads for insert
 drop policy if exists "delete own sim alert reads" on sim_alert_reads;
 create policy "delete own sim alert reads" on sim_alert_reads for delete
   using (user_id = auth.uid());
+
+-- ---------------------------------------------------------
+-- PAGOS ADELANTADOS
+-- Un cliente paga por adelantado (normalmente un año completo) por un
+-- grupo de SIM — cada pago queda con un número de comprobante correlativo,
+-- el comprobante que mandó el cliente (imagen/PDF) y, por cada SIM
+-- incluida, hasta qué fecha quedó renovada y cuánto se pagó por ella.
+-- ---------------------------------------------------------
+create table if not exists pagos_adelantados (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  numero_comprobante text not null,
+  cliente_nombre text not null,
+  fecha_pago date not null,
+  valor_total numeric not null check (valor_total >= 0),
+  comprobante_archivo_url text, -- lo que el cliente mandó como prueba de pago
+  nota text,
+  created_by uuid not null references profiles(id),
+  created_at timestamptz not null default now(),
+  unique (organization_id, numero_comprobante)
+);
+alter table pagos_adelantados enable row level security;
+
+create index if not exists idx_pagos_adelantados_org on pagos_adelantados (organization_id, fecha_pago desc);
+
+drop policy if exists "pagos select org" on pagos_adelantados;
+create policy "pagos select org" on pagos_adelantados for select
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos insert org" on pagos_adelantados;
+create policy "pagos insert org" on pagos_adelantados for insert
+  with check (organization_id = current_org_id() and tiene_modulo('pagos'));
+drop policy if exists "pagos update org" on pagos_adelantados;
+create policy "pagos update org" on pagos_adelantados for update
+  using (organization_id = current_org_id() and tiene_modulo('pagos'));
+
+create table if not exists pagos_adelantados_sims (
+  id uuid primary key default gen_random_uuid(),
+  pago_id uuid not null references pagos_adelantados(id) on delete cascade,
+  sim_id uuid not null references sim_cards(id) on delete cascade,
+  fecha_renovado_hasta date not null,
+  valor numeric not null check (valor >= 0),
+  created_at timestamptz not null default now()
+);
+alter table pagos_adelantados_sims enable row level security;
+
+create index if not exists idx_pagos_adelantados_sims_pago on pagos_adelantados_sims (pago_id);
+create index if not exists idx_pagos_adelantados_sims_sim on pagos_adelantados_sims (sim_id);
+
+drop policy if exists "pagos sims select org" on pagos_adelantados_sims;
+create policy "pagos sims select org" on pagos_adelantados_sims for select
+  using (
+    tiene_modulo('pagos')
+    and exists (select 1 from pagos_adelantados pa where pa.id = pago_id and pa.organization_id = current_org_id())
+  );
+drop policy if exists "pagos sims insert org" on pagos_adelantados_sims;
+create policy "pagos sims insert org" on pagos_adelantados_sims for insert
+  with check (
+    tiene_modulo('pagos')
+    and exists (select 1 from pagos_adelantados pa where pa.id = pago_id and pa.organization_id = current_org_id())
+  );
+
+-- Bucket para el comprobante que manda el cliente (captura de transferencia, etc.)
+insert into storage.buckets (id, name, public)
+values ('pagos-comprobantes', 'pagos-comprobantes', true)
+on conflict (id) do nothing;
+
+drop policy if exists "read pagos comprobantes" on storage.objects;
+create policy "read pagos comprobantes" on storage.objects for select
+  using (bucket_id = 'pagos-comprobantes');
+drop policy if exists "upload pagos comprobantes" on storage.objects;
+create policy "upload pagos comprobantes" on storage.objects for insert
+  with check (
+    bucket_id = 'pagos-comprobantes'
+    and tiene_modulo('pagos')
+    and (storage.foldername(name))[1] = current_org_id()::text
+  );
 
 -- ---------------------------------------------------------
 -- SIM CARDS (registro maestro por ICC, por organización — nunca se borra)

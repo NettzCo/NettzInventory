@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { calcularAlertas, DIAS_ALERTA_DEFAULT, ESTADOS_ALERTA_DEFAULT } from "@/lib/alerts";
-import { SimCurrentView, EstadoSim } from "@/lib/types";
+import { EstadoSim } from "@/lib/types";
+import { traerInventarioCompleto } from "@/lib/simQueries";
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -11,9 +12,9 @@ export async function GET(request: NextRequest) {
   const estados = estadosParam.length > 0 ? estadosParam : ESTADOS_ALERTA_DEFAULT;
 
   const supabase = await createClient();
-  const { data: sims } = await supabase.from("sim_current_view").select("*");
+  const sims = await traerInventarioCompleto(supabase);
 
-  const alertas = calcularAlertas((sims ?? []) as SimCurrentView[], new Set(), { estados, proveedor, umbralDias: umbral });
+  const alertas = calcularAlertas(sims, new Set(), { estados, proveedor, umbralDias: umbral });
 
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();

@@ -5,6 +5,7 @@ import { BulkOperation, ESTADOS_SIM } from "@/lib/types";
 import { formatFechaHora } from "@/lib/ui";
 import ClienteAutocomplete from "@/components/ClienteAutocomplete";
 import { aplicarCambios, revertirOperacionMasiva, consultarEstadoActual, ResultadoCambioMasivo, AsignacionRapida } from "./actions";
+import { traducirError } from "@/lib/friendlyError";
 
 interface Opcion {
   id: string;
@@ -172,7 +173,7 @@ function FormularioCambio({
         nota
       );
       if (res.error) {
-        setError(res.error);
+        setError(traducirError(res.error));
         setResultado(res.omitidas ? res : null);
         return;
       }
@@ -393,7 +394,7 @@ function FilaOperacion({
     setError(null);
     startTransition(async () => {
       const res = await revertirOperacionMasiva(operacion.id);
-      if (res?.error) { setError(res.error); return; }
+      if (res?.error) { setError(traducirError(res.error)); return; }
       onActualizada({ ...operacion, revertida_at: new Date().toISOString(), revertida_by: currentUserId });
     });
   }

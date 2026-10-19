@@ -4,7 +4,7 @@ import { contarAlertasActivas } from "@/lib/alerts";
 import { obtenerAlertasVistas } from "@/lib/alertReads";
 import { construirAlertasChat } from "@/lib/chatAlerts";
 import { construirAlertasPedidos } from "@/lib/pedidoAlerts";
-import { SimCurrentView } from "@/lib/types";
+import { traerSimsPrepagoActivas } from "@/lib/simQueries";
 import { derivarPaleta } from "@/lib/colorUtils";
 import Sidebar from "./Sidebar";
 import InactivityLogout from "./InactivityLogout";
@@ -17,13 +17,13 @@ export default async function DashboardLayout({
   const { userId, profile } = await getCurrentProfile();
 
   const supabase = await createClient();
-  const [{ data: sims }, alertasChat, alertasPedidos, vistas] = await Promise.all([
-    supabase.from("sim_current_view").select("*"),
+  const [sims, alertasChat, alertasPedidos, vistas] = await Promise.all([
+    traerSimsPrepagoActivas(supabase),
     construirAlertasChat(supabase, userId, profile.organization_id),
     construirAlertasPedidos(supabase, userId, profile.organization_id),
     obtenerAlertasVistas(supabase, userId),
   ]);
-  const alertCount = contarAlertasActivas((sims ?? []) as SimCurrentView[], vistas) + alertasChat.length + alertasPedidos.length;
+  const alertCount = contarAlertasActivas(sims, vistas) + alertasChat.length + alertasPedidos.length;
 
   // Cada organización tiene sus propios 2 colores (Configuración →
   // Organizaciones, solo visible para el dueño de la plataforma). Acá se

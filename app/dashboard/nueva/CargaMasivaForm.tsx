@@ -2,8 +2,15 @@
 
 import { useState, useTransition, useRef } from "react";
 import { analizarCargaMasiva, confirmarCargaMasiva, FilaParseada, FilaResultado } from "./actions";
+import { traducirError } from "@/lib/friendlyError";
 
 type Fase = "subir" | "revisar" | "listo";
+
+// Tamaño de cada tanda que el navegador manda al confirmar — chico a
+// propósito para que la llamada nunca se acerque a ningún límite de tamaño
+// del servidor, sin importar cuánto pese cada fila ni qué límite tenga
+// configurado el servidor en un momento dado.
+const TAMANO_TANDA_CONFIRMACION = 300;
 
 export default function CargaMasivaForm() {
   const [fase, setFase] = useState<Fase>("subir");
@@ -13,6 +20,7 @@ export default function CargaMasivaForm() {
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function asignarArchivo(file: File) {
@@ -46,7 +54,7 @@ export default function CargaMasivaForm() {
 
     startTransition(async () => {
       const res = await analizarCargaMasiva(formData);
-      if (res?.error) setError(res.error);
+      if (res?.error) setError(traducirError(res.error));
       else if (res?.ok) { setFilas(res.filas); setFase("revisar"); }
     });
   }
@@ -64,9 +72,33 @@ export default function CargaMasivaForm() {
   }
 
   function handleConfirmar() {
+    setProgreso({ hechas: 0, total: filas.length });
     startTransition(async () => {
-      const res = await confirmarCargaMasiva(filas);
-      setResultado({ creadas: res.creadas ?? 0, actualizadas: res.actualizadas ?? 0, sinCambios: res.sinCambios ?? 0, resultados: res.resultados ?? [] });
+      const acumulado = { creadas: 0, actualizadas: 0, sinCambios: 0, resultados: [] as FilaResultado[] };
+
+      for (let i = 0; i < filas.length; i += TAMANO_TANDA_CONFIRMACION) {
+        const tanda = filas.slice(i, i + TAMANO_TANDA_CONFIRMACION);
+        try {
+          const res = await confirmarCargaMasiva(tanda);
+          acumulado.creadas += res.creadas ?? 0;
+          acumulado.actualizadas += res.actualizadas ?? 0;
+          acumulado.sinCambios += res.sinCambios ?? 0;
+          acumulado.resultados.push(...(res.resultados ?? []));
+          if (res.error) {
+            // Un error a nivel de toda la tanda (no de una fila puntual) —
+            // se registra para cada fila de esa tanda y se sigue con las
+            // siguientes, para no perder el resto de la carga por una tanda.
+            for (const f of tanda) acumulado.resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: res.error });
+          }
+        } catch (e) {
+          const mensaje = e instanceof Error ? e.message : "Error desconocido al confirmar esta tanda.";
+          for (const f of tanda) acumulado.resultados.push({ fila: f.fila, icc: f.icc, ok: false, error: mensaje });
+        }
+        setProgreso({ hechas: Math.min(i + TAMANO_TANDA_CONFIRMACION, filas.length), total: filas.length });
+      }
+
+      setResultado(acumulado);
+      setProgreso(null);
       setFase("listo");
     });
   }
@@ -300,6 +332,20 @@ export default function CargaMasivaForm() {
             </p>
           )}
 
+          {progreso && (
+            <div className="mb-4">
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+                <div
+                  className="h-full transition-all"
+                  style={{ width: `${Math.round((progreso.hechas / progreso.total) * 100)}%`, background: "var(--ink-900)" }}
+                />
+              </div>
+              <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+                Guardando {progreso.hechas} de {progreso.total} — se manda en tandas chicas para que nunca falle por tamaño, esto puede tardar un poco con archivos grandes.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={handleConfirmar}
@@ -308,7 +354,9 @@ export default function CargaMasivaForm() {
               style={{ background: "var(--ink-900)" }}
             >
               {isPending
-                ? "Guardando…"
+                ? progreso
+                  ? `Guardando… (${progreso.hechas}/${progreso.total})`
+                  : "Guardando…"
                 : filasExistentes.length > 0
                   ? `Confirmar: crear ${filasNuevas.length} y actualizar ${filasExistentes.length}`
                   : `Confirmar y cargar ${filas.length - filasConError.length} SIM`}
@@ -355,7 +403,7 @@ export default function CargaMasivaForm() {
                     <tr key={e.fila} className="border-b last:border-0" style={{ borderColor: "var(--border)" }}>
                       <td className="px-3 py-2">{e.fila}</td>
                       <td className="px-3 py-2 font-mono">{e.icc || "—"}</td>
-                      <td className="px-3 py-2" style={{ color: "var(--state-desactivada)" }}>{e.error}</td>
+                      <td className="px-3 py-2" style={{ color: "var(--state-desactivada)" }}>{traducirError(e.error)}</td>
                     </tr>
                   ))}
                 </tbody>
