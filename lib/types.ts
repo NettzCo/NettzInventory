@@ -16,6 +16,7 @@ export type EstadoSim =
   | "Activa"
   | "Desactivada temporal"
   | "Desactivada"
+  | "Desactivada por cartera"
   | "Vencida";
 
 export const ESTADOS_SIM: EstadoSim[] = [
@@ -24,6 +25,7 @@ export const ESTADOS_SIM: EstadoSim[] = [
   "Activa",
   "Desactivada temporal",
   "Desactivada",
+  "Desactivada por cartera",
   "Vencida",
 ];
 

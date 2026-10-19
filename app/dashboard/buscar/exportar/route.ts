@@ -1,3 +1,4 @@
+import { hoyColombia, formatFecha, formatFechaHora } from "@/lib/ui";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/currentProfile";
 import {
@@ -45,6 +46,22 @@ export async function GET(request: NextRequest) {
 
   const resultados = (sims ?? []) as SimCurrentView[];
 
+  // Fecha de activación (vez más reciente que cada SIM pasó a "Activa"),
+  // en una sola consulta para todos los resultados.
+  const idsParaActivacion = resultados.map((s) => s.id).filter((id): id is string => !!id);
+  const fechaActivacionPorSim = new Map<string, string>();
+  if (idsParaActivacion.length > 0) {
+    const { data: historialActivaciones } = await supabase
+      .from("sim_status_history")
+      .select("sim_id, changed_at")
+      .in("sim_id", idsParaActivacion)
+      .eq("estado", "Activa")
+      .order("changed_at", { ascending: false });
+    for (const h of historialActivaciones ?? []) {
+      if (!fechaActivacionPorSim.has(h.sim_id)) fechaActivacionPorSim.set(h.sim_id, h.changed_at);
+    }
+  }
+
   if (tipo === "simple") {
     const sheet = workbook.addWorksheet("Búsqueda rápida");
     sheet.columns = [
@@ -55,6 +72,8 @@ export async function GET(request: NextRequest) {
       { header: "Plan cantidad", key: "plan_cantidad", width: 14 },
       { header: "Plan unidad", key: "plan_unidad", width: 12 },
       { header: "Precio", key: "precio", width: 12 },
+      { header: "Fecha de entrega", key: "fecha_entrega", width: 16 },
+      { header: "Fecha de activación", key: "fecha_activacion", width: 18 },
       { header: "Estado", key: "estado", width: 20 },
       { header: "Estado desde", key: "estado_desde", width: 14 },
     ];
@@ -70,8 +89,10 @@ export async function GET(request: NextRequest) {
         plan_cantidad: sim.plan_cantidad ?? "",
         plan_unidad: sim.plan_unidad ?? "",
         precio: sim.precio_cliente ?? "",
+        fecha_entrega: formatFecha(sim.fecha_entrega),
+        fecha_activacion: sim.id && fechaActivacionPorSim.has(sim.id) ? formatFecha(fechaActivacionPorSim.get(sim.id)) : "",
         estado: sim.estado_actual ?? "",
-        estado_desde: sim.estado_desde ? new Date(sim.estado_desde).toLocaleDateString("es-CO") : "",
+        estado_desde: formatFecha(sim.estado_desde),
       });
     }
   } else {
@@ -124,7 +145,7 @@ export async function GET(request: NextRequest) {
         tipo: "Número corto",
         fecha: n.assigned_at,
         titulo: `Número corto asignado: ${n.numero_corto}`,
-        detalle: n.unassigned_at ? `Vigente hasta ${new Date(n.unassigned_at).toLocaleDateString("es-CO")}` : "Vigente",
+        detalle: n.unassigned_at ? `Vigente hasta ${formatFecha(n.unassigned_at)}` : "Vigente",
         usuario: nombreDe(n.assigned_by),
       });
     }
@@ -135,7 +156,7 @@ export async function GET(request: NextRequest) {
         tipo: "Asignación de cliente",
         fecha: a.assigned_at,
         titulo: `Asignada a cliente: ${a.cliente_nombre}`,
-        detalle: `${a.plan_cantidad} ${a.plan_unidad} · ${a.tipo_plan} (${a.pago_momento}) · $${a.precio_cliente.toLocaleString("es-CO")} · Comercial: ${nombreDe(a.comercial_id)}${a.broker_id ? " · Broker: " + nombreDe(a.broker_id) : ""}${a.ended_at ? " · Finalizada " + new Date(a.ended_at).toLocaleDateString("es-CO") : " · Vigente"}`,
+        detalle: `${a.plan_cantidad} ${a.plan_unidad} · ${a.tipo_plan} (${a.pago_momento}) · $${a.precio_cliente.toLocaleString("es-CO")} · Comercial: ${nombreDe(a.comercial_id)}${a.broker_id ? " · Broker: " + nombreDe(a.broker_id) : ""}${a.ended_at ? " · Finalizada " + formatFecha(a.ended_at) : " · Vigente"}`,
         usuario: nombreDe(a.created_by),
       });
     }
@@ -162,7 +183,7 @@ export async function GET(request: NextRequest) {
       sheet.addRow({
         icc: ev.icc,
         tipo: ev.tipo,
-        fecha: new Date(ev.fecha).toLocaleString("es-CO"),
+        fecha: formatFechaHora(ev.fecha),
         titulo: ev.titulo,
         detalle: ev.detalle,
         usuario: ev.usuario,
@@ -179,6 +200,8 @@ export async function GET(request: NextRequest) {
       { header: "Plan cantidad", key: "plan_cantidad", width: 14 },
       { header: "Plan unidad", key: "plan_unidad", width: 12 },
       { header: "Precio", key: "precio", width: 12 },
+      { header: "Fecha de entrega", key: "fecha_entrega", width: 16 },
+      { header: "Fecha de activación", key: "fecha_activacion", width: 18 },
       { header: "Estado", key: "estado", width: 20 },
     ];
     resumen.getRow(1).font = { bold: true };
@@ -191,13 +214,15 @@ export async function GET(request: NextRequest) {
         plan_cantidad: sim.plan_cantidad ?? "",
         plan_unidad: sim.plan_unidad ?? "",
         precio: sim.precio_cliente ?? "",
+        fecha_entrega: formatFecha(sim.fecha_entrega),
+        fecha_activacion: sim.id && fechaActivacionPorSim.has(sim.id) ? formatFecha(fechaActivacionPorSim.get(sim.id)) : "",
         estado: sim.estado_actual ?? "",
       });
     }
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = hoyColombia();
   const nombreArchivo = `busqueda-${tipo}-nettz-${fecha}.xlsx`;
 
   return new Response(buffer, {

@@ -5,6 +5,8 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Cliente, SimCurrentView } from "@/lib/types";
 import { formatCodigoCliente, formatFecha, formatFechaHora, formatMoneda, estadoEfectivo } from "@/lib/ui";
+import DesactivarClientePanel from "./DesactivarClientePanel";
+import { buscarDesactivacionVigente } from "./actions";
 
 export default async function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -48,6 +50,8 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   ]);
 
   const sims = (simsRows ?? []) as SimCurrentView[];
+  const desactivacionVigente = await buscarDesactivacionVigente(cliente.nombre);
+  const proveedoresDisponibles = Array.from(new Set(sims.map((s) => s.proveedor))).sort();
 
   return (
     <main className="p-8">
@@ -88,6 +92,13 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
       </section>
+
+      <DesactivarClientePanel
+        clienteNombre={cliente.nombre}
+        proveedoresDisponibles={proveedoresDisponibles}
+        desactivacionVigente={desactivacionVigente}
+        puedeEditar={tieneModulo(profile, "clientes")}
+      />
 
       {/* SIM asignadas */}
       <section className="rounded-xl border bg-white overflow-hidden mb-6" style={{ borderColor: "var(--border)" }}>

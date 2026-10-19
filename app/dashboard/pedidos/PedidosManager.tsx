@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Pedido } from "@/lib/types";
-import { formatFechaHora } from "@/lib/ui";
+import { formatFechaHora, hoyColombia } from "@/lib/ui";
 import { crearPedido, editarPedido, eliminarPedido, marcarPedidoEnviado, rechazarPedido, subirComprobante, PedidoInput } from "./actions";
 import { traducirError } from "@/lib/friendlyError";
 
@@ -542,7 +542,7 @@ function ConfirmarEnvioRow({
   onCancelar: () => void;
   onConfirmado: (p: Pedido) => void;
 }) {
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => hoyColombia());
   const [archivo, setArchivo] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

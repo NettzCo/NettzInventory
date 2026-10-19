@@ -56,7 +56,7 @@ export async function construirReportesActivaciones(
       .from("sim_status_history")
       .select("changed_at, estado, sim_cards!inner(proveedor, organization_id)")
       .eq("sim_cards.organization_id", organizationId)
-      .in("estado", ["Activa", "Desactivada"]),
+      .in("estado", ["Activa", "Desactivada", "Desactivada por cartera"]),
     supabase
       .from("sim_assignments")
       .select("fecha_entrega, sim_cards!inner(proveedor, organization_id)")
@@ -69,7 +69,7 @@ export async function construirReportesActivaciones(
   for (const h of (historial ?? []) as unknown as { changed_at: string; estado: string; sim_cards: SimCardMini }[]) {
     const item = { fecha: h.changed_at.slice(0, 10), proveedor: h.sim_cards?.proveedor ?? "—" };
     if (h.estado === "Activa") filasActivacion.push(item);
-    else if (h.estado === "Desactivada") filasDesactivacion.push(item);
+    else if (h.estado === "Desactivada" || h.estado === "Desactivada por cartera") filasDesactivacion.push(item);
   }
 
   const filasEntregas = ((entregasRaw ?? []) as unknown as { fecha_entrega: string; sim_cards: SimCardMini }[]).map((e) => ({

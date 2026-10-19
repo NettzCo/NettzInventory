@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encontrarClienteSimilar } from "@/lib/textMatch";
+import { hoyColombia, fechaColombiaATimestamp } from "@/lib/ui";
 import { listarTodasLasSims, obtenerDetallesSims, LOTE_DETALLES, SimproSimDetalle, SimproConfigError, SimproApiError } from "./client";
 import { mapearEstadoSimpro } from "./estadoMapping";
 
@@ -173,7 +174,7 @@ async function procesarSim(
       estado,
       changed_by: userId,
       nota: `Creada por sincronización con SIMPro (Wireless Logic).${!reconocido && valorOriginal ? ` Estado sin mapear: "${valorOriginal}" — se dejó como "${estado}", revísalo.` : ""}`,
-      ...(fechaActivacion && estado === "Activa" ? { changed_at: new Date(fechaActivacion).toISOString() } : {}),
+      ...(fechaActivacion && estado === "Activa" ? { changed_at: fechaColombiaATimestamp(fechaActivacion) } : {}),
     });
 
     if (msisdn) {
@@ -190,7 +191,7 @@ async function procesarSim(
         pago_momento: "Mes vencido",
         precio_cliente: 0,
         comercial_id: userId,
-        fecha_entrega: fechaActivacion || new Date().toISOString().slice(0, 10),
+        fecha_entrega: fechaActivacion || hoyColombia(),
         created_by: userId,
       });
       if (!clientesExistentes.includes(cliente)) clientesExistentes.push(cliente);
@@ -240,7 +241,7 @@ async function procesarSim(
       pago_momento: "Mes vencido",
       precio_cliente: 0,
       comercial_id: userId,
-      fecha_entrega: fechaActivacion || new Date().toISOString().slice(0, 10),
+      fecha_entrega: fechaActivacion || hoyColombia(),
       created_by: userId,
     });
     if (!clientesExistentes.includes(cliente)) clientesExistentes.push(cliente);

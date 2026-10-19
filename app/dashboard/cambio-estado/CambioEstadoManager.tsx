@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { BulkOperation, ESTADOS_SIM } from "@/lib/types";
-import { formatFechaHora } from "@/lib/ui";
+import { formatFechaHora, hoyColombia } from "@/lib/ui";
 import ClienteAutocomplete from "@/components/ClienteAutocomplete";
 import { aplicarCambios, revertirOperacionMasiva, consultarEstadoActual, ResultadoCambioMasivo, AsignacionRapida } from "./actions";
 import { traducirError } from "@/lib/friendlyError";
@@ -23,7 +23,7 @@ const ASIGNACION_VACIA: AsignacionRapida = {
   precio_cliente: "",
   comercial_id: "",
   broker_id: "",
-  fecha_entrega: new Date().toISOString().slice(0, 10),
+  fecha_entrega: hoyColombia(),
 };
 
 // Suma meses a una fecha (YYYY-MM-DD), solo para la vista previa de
@@ -113,7 +113,7 @@ function FormularioCambio({
   const [estadoActual, setEstadoActual] = useState<string | null>(null);
 
   const [cambiarFechaActivacion, setCambiarFechaActivacion] = useState(false);
-  const [fechaActivacion, setFechaActivacion] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fechaActivacion, setFechaActivacion] = useState(() => hoyColombia());
 
   const [cambiarAsignacion, setCambiarAsignacion] = useState(false);
   const [asignacion, setAsignacion] = useState<AsignacionRapida>(ASIGNACION_VACIA);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { addMonths } from "date-fns";
 import { SimCard, SimCurrentView, HojaDeVidaEvento, Profile, ESTADOS_SIM, EstadoSim } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
-import { formatFecha, formatFechaHora, formatMoneda, estadoEfectivo } from "@/lib/ui";
+import { formatFecha, formatFechaHora, formatMoneda, estadoEfectivo, hoyColombia, fechaISODesdeDate } from "@/lib/ui";
 import { cambiarEstado, asignarNumeroCorto, reasignarCliente, actualizarDetalles, renovarSim, desactivarSim, ReasignacionInput } from "./actions";
 import ClienteAutocomplete, { ClienteOpcion } from "@/components/ClienteAutocomplete";
 import { traducirError } from "@/lib/friendlyError";
@@ -22,6 +22,7 @@ const EVENT_ICON: Record<HojaDeVidaEvento["tipo"], string> = {
 export default function HojaDeVida({
   simCard,
   current,
+  fechaActivacion,
   eventos,
   comerciales,
   brokers,
@@ -31,6 +32,7 @@ export default function HojaDeVida({
 }: {
   simCard: SimCard;
   current: SimCurrentView | null;
+  fechaActivacion: string | null;
   eventos: HojaDeVidaEvento[];
   comerciales: Profile[];
   brokers: Profile[];
@@ -74,10 +76,11 @@ export default function HojaDeVida({
         <Resumen label="Comercial" valor={current?.comercial_nombre ?? "—"} />
         <Resumen label="Broker" valor={current?.broker_nombre ?? "Sin broker"} />
         <Resumen label="Entregada el" valor={formatFecha(current?.fecha_entrega)} />
+        <Resumen label="Fecha de activación" valor={fechaActivacion ? formatFechaHora(fechaActivacion) : "— (aún no activada)"} />
         {current?.tipo_plan === "Prepago" && (
           <Resumen
             label="Vence el"
-            valor={fechaVencimiento ? formatFecha(fechaVencimiento.toISOString()) : "— (aún no está Activa)"}
+            valor={fechaVencimiento ? formatFecha(fechaISODesdeDate(fechaVencimiento)) : "— (aún no está Activa)"}
           />
         )}
         <Resumen label="APN" valor={simCard.apn ?? "Sin especificar"} mono />
@@ -209,7 +212,7 @@ function BotonDesactivar({ simId }: { simId: string }) {
 }
 
 function PanelRenovar({ simId, onClose }: { simId: string; onClose: () => void }) {
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => hoyColombia());
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -410,7 +413,7 @@ function PanelCliente({
     pago_momento: "Anticipado",
     duracion_meses: "12",
     precio_cliente: "",
-    fecha_entrega: new Date().toISOString().slice(0, 10),
+    fecha_entrega: hoyColombia(),
     comercial_id: "",
     broker_id: "",
   });

@@ -6,6 +6,7 @@ import { crearEntrega, SimRowInput } from "./actions";
 import { ESTADOS_SIM } from "@/lib/types";
 import ClienteAutocomplete, { ClienteOpcion } from "@/components/ClienteAutocomplete";
 import { traducirError } from "@/lib/friendlyError";
+import { hoyColombia } from "@/lib/ui";
 
 interface UsuarioOpcion {
   id: string;
@@ -50,7 +51,7 @@ export default function NuevaEntregaForm({
   const [duracionMeses, setDuracionMeses] = useState("12");
   const [pagoMomento, setPagoMomento] = useState("Anticipado");
   const [precioCliente, setPrecioCliente] = useState("");
-  const [fechaEntrega, setFechaEntrega] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fechaEntrega, setFechaEntrega] = useState(() => hoyColombia());
   const [comercialId, setComercialId] = useState("");
   const [brokerId, setBrokerId] = useState("");
 

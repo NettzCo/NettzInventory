@@ -102,6 +102,7 @@ export default async function BusquedaRapidaPage({
                   <Th>Comercial</Th>
                   <Th>Broker</Th>
                   <Th>Fecha de entrega</Th>
+                  <Th>Fecha de activación</Th>
                   <Th>Estado</Th>
                   <Th>Desde el último cambio</Th>
                   <Th>Observaciones</Th>
@@ -149,6 +150,11 @@ export default async function BusquedaRapidaPage({
                     </td>
                     <td className="p-0">
                       <Link href={`/dashboard/sim/${sim.id}`} className="block px-4 py-3 whitespace-nowrap">{formatFecha(sim.fecha_entrega)}</Link>
+                    </td>
+                    <td className="p-0">
+                      <Link href={`/dashboard/sim/${sim.id}`} className="block px-4 py-3 whitespace-nowrap">
+                        {sim.estado_actual === "Activa" ? formatFecha(sim.estado_desde) : "—"}
+                      </Link>
                     </td>
                     <td className="px-4 py-3">
                       <Link href={`/dashboard/sim/${sim.id}`}><StatusPill estado={sim.estado_actual} /></Link>

@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/currentProfile";
 import { createClient } from "@/lib/supabase/server";
 import { tieneModulo } from "@/lib/modules";
 import { ESTADOS_SIM, EstadoSim } from "@/lib/types";
+import { fechaColombiaATimestamp } from "@/lib/ui";
 import { revalidatePath } from "next/cache";
 
 interface SimEncontrada {
@@ -231,7 +232,7 @@ export async function aplicarCambios(iccsTexto: string, opciones: OpcionesCambio
         changed_by: userId,
         nota: nota.trim() || null,
         ...(opciones.cambiarFechaActivacion && opciones.fechaActivacion
-          ? { changed_at: new Date(opciones.fechaActivacion).toISOString() }
+          ? { changed_at: fechaColombiaATimestamp(opciones.fechaActivacion) }
           : {}),
       }));
 

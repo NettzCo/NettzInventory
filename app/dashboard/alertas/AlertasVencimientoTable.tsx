@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertaVencimiento } from "@/lib/alerts";
-import { formatFecha, formatMoneda, estadoEfectivo } from "@/lib/ui";
+import { formatFecha, formatMoneda, estadoEfectivo, hoyColombia } from "@/lib/ui";
 import { marcarAlertasVistas } from "./liveActions";
 import { renovarSim, desactivarSim } from "../sim/[id]/actions";
 import { traducirError } from "@/lib/friendlyError";
@@ -108,7 +108,7 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function AccionesVencida({ simId }: { simId: string }) {
   const [abierto, setAbierto] = useState(false);
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => hoyColombia());
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();

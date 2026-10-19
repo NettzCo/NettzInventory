@@ -83,6 +83,12 @@ export default async function SimDetailPage({
 
   eventos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
+  // Fecha de activación = la vez más reciente que la SIM pasó a "Activa"
+  // según su historial (statusRows viene ordenado de más reciente a más
+  // vieja). Si nunca ha estado activa, queda null y se muestra "—".
+  const fechaActivacion =
+    ((statusRows ?? []) as SimStatusHistory[]).find((s) => s.estado === "Activa")?.changed_at ?? null;
+
   const comerciales = profiles.filter((p) => tieneModulo(p, "inventario"));
   const brokers = profiles; // "Broker asociado" es informal/opcional: cualquier usuario activo
 
@@ -90,6 +96,7 @@ export default async function SimDetailPage({
     <HojaDeVida
       simCard={simCard as SimCard}
       current={current as SimCurrentView}
+      fechaActivacion={fechaActivacion}
       eventos={eventos}
       comerciales={comerciales}
       brokers={brokers}

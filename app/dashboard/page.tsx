@@ -44,7 +44,10 @@ export default async function InicioPage() {
   }
   const proveedoresOrdenados = Object.entries(activasPorProveedor).sort((a, b) => b[1] - a[1]);
 
-  const desactivadas = (porEstado["Desactivada"] ?? 0) + (porEstado["Desactivada temporal"] ?? 0);
+  const desactivadas =
+    (porEstado["Desactivada"] ?? 0) +
+    (porEstado["Desactivada temporal"] ?? 0) +
+    (porEstado["Desactivada por cartera"] ?? 0);
   const activadasUltimoMes = new Set((activacionesRecientes ?? []).map((r) => r.sim_id)).size;
 
   return (

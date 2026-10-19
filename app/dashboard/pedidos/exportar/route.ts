@@ -1,7 +1,7 @@
 import { getCurrentProfile } from "@/lib/currentProfile";
 import { createClient } from "@/lib/supabase/server";
 import { tieneModulo } from "@/lib/modules";
-import { formatFechaHora } from "@/lib/ui";
+import { formatFechaHora, hoyColombia } from "@/lib/ui";
 import { Pedido } from "@/lib/types";
 import { NextRequest } from "next/server";
 
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = hoyColombia();
 
   return new Response(buffer, {
     headers: {

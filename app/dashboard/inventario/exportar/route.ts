@@ -1,3 +1,4 @@
+import { hoyColombia, formatFecha } from "@/lib/ui";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 
@@ -50,6 +51,25 @@ export async function GET(request: NextRequest) {
     desde += PAGINA;
   }
 
+  // Fecha de activación de cada SIM = la vez más reciente que pasó a
+  // "Activa" según su historial. Se trae en UNA sola consulta para todas
+  // las SIM del export (no una por SIM, que sería lentísimo con miles).
+  const idsSims = sims.map((s) => s.id).filter((id): id is string => !!id);
+  const fechaActivacionPorSim = new Map<string, string>();
+  if (idsSims.length > 0) {
+    const { data: historialActivaciones } = await supabase
+      .from("sim_status_history")
+      .select("sim_id, changed_at")
+      .in("sim_id", idsSims)
+      .eq("estado", "Activa")
+      .order("changed_at", { ascending: false });
+    for (const h of historialActivaciones ?? []) {
+      // Como viene ordenado de más reciente a más vieja, la primera vez
+      // que se ve cada sim_id ya es su activación más reciente.
+      if (!fechaActivacionPorSim.has(h.sim_id)) fechaActivacionPorSim.set(h.sim_id, h.changed_at);
+    }
+  }
+
   // Nombres completos de comercial/broker (sim_current_view ya los trae)
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -71,6 +91,7 @@ export async function GET(request: NextRequest) {
     { header: "Comercial", key: "comercial", width: 20 },
     { header: "Broker", key: "broker", width: 20 },
     { header: "Fecha de entrega", key: "fecha_entrega", width: 16 },
+    { header: "Fecha de activación", key: "fecha_activacion", width: 18 },
     { header: "Observaciones", key: "observaciones", width: 30 },
   ];
   sheet.columns = columns;
@@ -84,7 +105,7 @@ export async function GET(request: NextRequest) {
       numero_corto: sim.numero_corto_actual ?? "",
       apn: sim.apn ?? "",
       estado: sim.estado_actual ?? "",
-      estado_desde: sim.estado_desde ? new Date(sim.estado_desde).toLocaleDateString("es-CO") : "",
+      estado_desde: formatFecha(sim.estado_desde),
       cliente: sim.cliente_actual ?? "",
       plan_cantidad: sim.plan_cantidad ?? "",
       plan_unidad: sim.plan_unidad ?? "",
@@ -93,7 +114,8 @@ export async function GET(request: NextRequest) {
       precio: sim.precio_cliente ?? "",
       comercial: sim.comercial_nombre ?? "",
       broker: sim.broker_nombre ?? "",
-      fecha_entrega: sim.fecha_entrega ? new Date(sim.fecha_entrega).toLocaleDateString("es-CO") : "",
+      fecha_entrega: formatFecha(sim.fecha_entrega),
+      fecha_activacion: sim.id && fechaActivacionPorSim.has(sim.id) ? formatFecha(fechaActivacionPorSim.get(sim.id)) : "",
       observaciones: sim.observaciones ?? "",
     });
   }
@@ -120,7 +142,7 @@ export async function GET(request: NextRequest) {
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = hoyColombia();
 
   return new Response(buffer, {
     headers: {

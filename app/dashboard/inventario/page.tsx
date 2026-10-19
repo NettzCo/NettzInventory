@@ -3,7 +3,7 @@ import { SimCurrentView, ESTADOS_SIM } from "@/lib/types";
 import Link from "next/link";
 import { addMonths } from "date-fns";
 import StatusPill from "@/components/StatusPill";
-import { formatFecha, formatPlan, estadoEfectivo } from "@/lib/ui";
+import { formatFecha, formatPlan, estadoEfectivo, fechaISODesdeDate } from "@/lib/ui";
 import InventarioTabs from "../InventarioTabs";
 import PageSizeSelect from "./PageSizeSelect";
 
@@ -194,6 +194,8 @@ export default async function DashboardPage({
               <Th>N.° corto</Th>
               <Th>Cliente</Th>
               <Th>Plan</Th>
+              <Th>Entrega</Th>
+              <Th>Activación</Th>
               <Th>Estado</Th>
               <Th>Desde</Th>
               <Th>Vence el</Th>
@@ -222,6 +224,12 @@ export default async function DashboardPage({
                     )}
                   </Link>
                 </Td>
+                <Td><Link href={`/dashboard/sim/${sim.id}`} className="block">{formatFecha(sim.fecha_entrega)}</Link></Td>
+                <Td>
+                  <Link href={`/dashboard/sim/${sim.id}`} className="block">
+                    {sim.estado_actual === "Activa" ? formatFecha(sim.estado_desde) : "—"}
+                  </Link>
+                </Td>
                 <td className="px-4 py-3">
                   <Link href={`/dashboard/sim/${sim.id}`}>
                     <StatusPill estado={estadoEfectivo(sim)} />
@@ -231,7 +239,7 @@ export default async function DashboardPage({
                 <Td>
                   <Link href={`/dashboard/sim/${sim.id}`} className="block">
                     {sim.estado_actual === "Activa" && sim.tipo_plan === "Prepago" && sim.fecha_entrega
-                      ? formatFecha(addMonths(new Date(`${sim.fecha_entrega}T00:00:00`), sim.duracion_meses ?? 12).toISOString())
+                      ? formatFecha(fechaISODesdeDate(addMonths(new Date(`${sim.fecha_entrega}T00:00:00`), sim.duracion_meses ?? 12)))
                       : "—"}
                   </Link>
                 </Td>

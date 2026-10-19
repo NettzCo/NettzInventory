@@ -10,7 +10,7 @@ import {
   ItemPagoInput,
 } from "./actions";
 import { traducirError } from "@/lib/friendlyError";
-import { formatFecha, formatMoneda } from "@/lib/ui";
+import { formatFecha, formatMoneda, hoyColombia } from "@/lib/ui";
 
 interface FilaFormulario extends ItemPagoInput {
   key: string;
@@ -43,7 +43,7 @@ export default function PagosManager({
 
   // --- Formulario ---
   const [clienteNombre, setClienteNombre] = useState("");
-  const [fechaPago, setFechaPago] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fechaPago, setFechaPago] = useState(() => hoyColombia());
   const [nota, setNota] = useState("");
   const [filas, setFilas] = useState<FilaFormulario[]>([filaVacia()]);
   const [errorForm, setErrorForm] = useState<string | null>(errorInicial ? traducirError(errorInicial) : null);
@@ -135,7 +135,7 @@ export default function PagosManager({
     setPagoCreado(null);
     setComprobanteUrl(null);
     setClienteNombre("");
-    setFechaPago(new Date().toISOString().slice(0, 10));
+    setFechaPago(hoyColombia());
     setNota("");
     setFilas([filaVacia()]);
     setErrorForm(null);

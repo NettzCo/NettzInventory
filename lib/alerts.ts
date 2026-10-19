@@ -1,5 +1,6 @@
 import { addMonths, differenceInCalendarDays, format } from "date-fns";
 import { SimCurrentView, EstadoSim } from "./types";
+import { fechaISODesdeDate } from "./ui";
 
 // Días antes del aniversario en que empieza a mostrarse la alerta.
 export const DIAS_ALERTA_DEFAULT = 30;
@@ -78,7 +79,7 @@ export function calcularAlertas(
       alertas.push({
         sim,
         fechaActivacion: sim.fecha_entrega,
-        fechaAniversario: fechaAniversario.toISOString(),
+        fechaAniversario: fechaISODesdeDate(fechaAniversario),
         diasRestantes,
         vista: vistas.has(llaveAlerta(sim.id, fechaAniversario)),
       });

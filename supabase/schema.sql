@@ -680,7 +680,7 @@ create table if not exists sim_status_history (
   id uuid primary key default gen_random_uuid(),
   sim_id uuid not null references sim_cards(id) on delete cascade,
   estado text not null check (estado in (
-    'Inactiva', 'Lista para activar', 'Activa', 'Desactivada temporal', 'Desactivada'
+    'Inactiva', 'Lista para activar', 'Activa', 'Desactivada temporal', 'Desactivada', 'Desactivada por cartera'
   )),
   estado_anterior text, -- el que tenía justo antes de este cambio (permite deshacer sin adivinar)
   bulk_operation_id uuid, -- si este cambio vino de una operación masiva; FK se agrega más abajo
@@ -704,8 +704,19 @@ create table if not exists bulk_operations (
   created_by uuid not null references profiles(id),
   created_at timestamptz not null default now(),
   revertida_at timestamptz,
-  revertida_by uuid references profiles(id)
+  revertida_by uuid references profiles(id),
+  -- Solo se usan cuando tipo = 'cambio_estado' originado por una
+  -- desactivación masiva de cliente (ver app/dashboard/clientes/[id]/actions.ts):
+  -- permiten saber desde la hoja de vida del cliente si tiene una
+  -- desactivación vigente, y revertirla con revertirOperacionMasiva.
+  cliente_nombre text,
+  tipo_desactivacion text check (tipo_desactivacion in ('total', 'cartera')),
+  proveedores_incluidos text[]
 );
+
+create index if not exists idx_bulk_operations_cliente_vigente
+  on bulk_operations (organization_id, cliente_nombre)
+  where cliente_nombre is not null and revertida_at is null;
 
 alter table sim_status_history add constraint sim_status_history_bulk_operation_id_fkey
   foreign key (bulk_operation_id) references bulk_operations(id) on delete set null;

@@ -5,6 +5,7 @@ import { getCurrentProfile } from "@/lib/currentProfile";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ESTADOS_SIM, PLAN_UNIDADES, TIPOS_PLAN, PAGOS_MOMENTO } from "@/lib/types";
+import { hoyColombia, fechaColombiaATimestamp } from "@/lib/ui";
 import { encontrarClienteSimilarConTipo, emparejarValorInsensible } from "@/lib/textMatch";
 
 export interface SimRowInput {
@@ -50,7 +51,7 @@ export async function crearEntrega(input: EntregaInput) {
 
   // fecha_entrega es opcional: si no se indica, se usa la fecha de hoy
   // (fecha de creación del registro).
-  const fechaEntregaFinal = input.fecha_entrega || new Date().toISOString().slice(0, 10);
+  const fechaEntregaFinal = input.fecha_entrega || hoyColombia();
 
   if (!input.sims.length) {
     return { error: "Agrega al menos una SIM card." };
@@ -130,7 +131,7 @@ export async function crearEntrega(input: EntregaInput) {
       // esa fecha real en vez de la fecha de hoy — así las alertas de
       // vencimiento calculan bien desde el principio.
       ...(sim.estado_entrega === "Activa" && sim.fecha_activacion
-        ? { changed_at: new Date(sim.fecha_activacion).toISOString() }
+        ? { changed_at: fechaColombiaATimestamp(sim.fecha_activacion) }
         : {}),
     });
     if (errorEstado) {
@@ -431,7 +432,7 @@ async function extraerFilas(formData: FormData): Promise<{ error: string } | { f
       tipoPlan,
       pagoMomento,
       precio,
-      fechaEntrega: fechaEntrega || new Date().toISOString().slice(0, 10),
+      fechaEntrega: fechaEntrega || hoyColombia(),
       comercialId: comercial?.id ?? "",
       comercialNombre: comercial?.full_name ?? comercialEscrito,
       brokerId: broker?.id ?? "",

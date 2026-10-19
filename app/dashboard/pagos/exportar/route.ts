@@ -1,3 +1,4 @@
+import { hoyColombia } from "@/lib/ui";
 import { getCurrentProfile } from "@/lib/currentProfile";
 import { tieneModulo } from "@/lib/modules";
 import { listarPagos } from "../actions";
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = hoyColombia();
 
   return new Response(buffer, {
     headers: {

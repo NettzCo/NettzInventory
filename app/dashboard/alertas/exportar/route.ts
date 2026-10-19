@@ -1,3 +1,4 @@
+import { hoyColombia } from "@/lib/ui";
 import { createClient } from "@/lib/supabase/server";
 import { calcularAlertas, DIAS_ALERTA_DEFAULT, ESTADOS_ALERTA_DEFAULT } from "@/lib/alerts";
 import { EstadoSim } from "@/lib/types";
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
   sheetFiltros.addRow(["Total de SIM exportadas", alertas.length]);
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = hoyColombia();
 
   return new Response(buffer, {
     headers: {
