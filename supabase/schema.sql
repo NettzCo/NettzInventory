@@ -298,10 +298,18 @@ create table if not exists clientes (
   fecha_vinculacion date,
   observaciones text,
   active boolean not null default true,
+  kam_id uuid references profiles(id),    -- Key Account Manager responsable del cliente (debe ser un usuario registrado)
+  broker_id uuid references profiles(id), -- ya no se usa — se dejó la columna por compatibilidad, ver "broker" abajo
+  broker text,                            -- broker/intermediario asociado — texto libre, no necesariamente un usuario del sistema
   created_at timestamptz not null default now(),
   created_by uuid not null references profiles(id),
   unique (organization_id, codigo)
 );
+
+-- Por si la tabla ya existía de antes sin estas columnas.
+alter table clientes add column if not exists kam_id uuid references profiles(id);
+alter table clientes add column if not exists broker_id uuid references profiles(id);
+alter table clientes add column if not exists broker text;
 
 -- Asigna el código correlativo automáticamente al crear un cliente, si no
 -- se especifica uno (nunca se debería especificar manualmente)
