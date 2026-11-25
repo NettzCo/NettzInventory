@@ -153,8 +153,13 @@ function UsuarioRow({ usuario, roles }: { usuario: Profile; roles: RoleRow[] }) 
   function handleToggleActive() {
     const next = !active;
     setActive(next);
-    startTransition(() => {
-      void actualizarUsuario(usuario.id, { active: next });
+    setFeedback(null);
+    startTransition(async () => {
+      const res = await actualizarUsuario(usuario.id, { active: next });
+      if (res?.error) {
+        setActive(!next); // no se guardó de verdad
+        setFeedback({ type: "error", text: traducirError(res.error) });
+      }
     });
   }
 

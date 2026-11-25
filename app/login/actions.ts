@@ -15,6 +15,9 @@ export async function login(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    if (error.message.toLowerCase().includes("banned")) {
+      return { error: "Tu usuario está desactivado. Comunícate con el administrador." };
+    }
     return { error: "Correo o contraseña incorrectos." };
   }
 

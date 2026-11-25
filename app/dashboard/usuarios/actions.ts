@@ -85,6 +85,20 @@ export async function actualizarUsuario(id: string, patch: { role_id?: string; a
   // usuario editar su propio perfil, así que aquí ya validamos manualmente
   // arriba que quien llama es super administrador de la misma organización.
   const admin = createAdminClient();
+
+  // Desactivar a alguien debe quitarle el acceso de verdad: hasta ahora solo se
+  // marcaba "Inactivo" en el perfil y esa persona podía seguir entrando. Se
+  // bloquea (ban) su cuenta de acceso, que además cierra sus sesiones al renovarse.
+  if (patch.active !== undefined) {
+    if (id === profile.id && patch.active === false) {
+      return { error: "No puedes desactivar tu propio usuario mientras estás conectado." };
+    }
+    const { error: errorAcceso } = await admin.auth.admin.updateUserById(id, {
+      ban_duration: patch.active ? "none" : "876000h", // ~100 años
+    });
+    if (errorAcceso) return { error: errorAcceso.message };
+  }
+
   const { error } = await admin.from("profiles").update(patch).eq("id", id);
   if (error) return { error: error.message };
 
@@ -136,7 +150,19 @@ export async function eliminarUsuario(id: string) {
   const { data: objetivo } = await admin.from("profiles").select("full_name").eq("id", id).maybeSingle();
 
   const { error } = await admin.auth.admin.deleteUser(id);
-  if (error) return { error: error.message };
+  if (error) {
+    // Supabase solo dice "Database error deleting user" cuando la persona ya
+    // tiene actividad registrada (entregas, cambios de estado, pedidos, chat…):
+    // borrarla dejaría ese historial sin autor, así que la base de datos lo impide.
+    if (error.message.toLowerCase().includes("database error deleting user")) {
+      return {
+        error:
+          "No se puede eliminar a este usuario porque ya tiene actividad registrada (entregas, cambios de estado, pedidos o chat). " +
+          "Desactívalo: pierde el acceso y su historial se conserva.",
+      };
+    }
+    return { error: error.message };
+  }
 
   await admin.from("audit_log").insert({
     organization_id: currentProfile.organization_id,
