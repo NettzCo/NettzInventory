@@ -314,21 +314,21 @@ async function extraerFilas(formData: FormData): Promise<{ error: string } | { f
       return String(v).trim();
     };
 
-    // El ICC y el número corto tienen 15-20 dígitos. Si Excel los guardó
-    // como NÚMERO (no como texto) en algún punto —por ejemplo, si alguien
-    // los escribió a mano en una celda sin formato de texto—, el valor
-    // puede llegar YA CORROMPIDO: Excel solo es exacto hasta ~15 cifras, así
-    // que los últimos dígitos pueden estar mal sin que se note a simple
-    // vista. No hay forma de "recuperar" esos dígitos después del hecho,
-    // así que la fila se marca con error en vez de guardar un ICC dudoso.
+    // Excel solo guarda con exactitud hasta 15 cifras cuando una celda es un
+    // NÚMERO (no texto). Un ICC (19-20 dígitos) que llegue como número puede
+    // venir YA CORROMPIDO en los últimos dígitos, y no hay forma de recuperarlos:
+    // esa fila se marca con error en vez de guardar un ICC dudoso.
+    // Un número de hasta 14 cifras (como un número corto de 10 dígitos) sí es
+    // exacto aunque la celda sea numérica, así que ese se acepta tal cual.
     function advertirSiEraNumero(col: string, valor: string, errores: string[]) {
       const raw = getRaw(col);
-      if (typeof raw === "number") {
-        errores.push(
-          `${col} llegó como número de Excel, no como texto ("${valor}") — puede haber perdido dígitos. ` +
-          `Vuelve a escribirlo en la celda como texto (formato de columna "Texto") y sube el archivo de nuevo.`
-        );
-      }
+      if (typeof raw !== "number") return;
+      const exacto = Number.isInteger(raw) && Math.abs(raw) < 1e15;
+      if (exacto) return;
+      errores.push(
+        `${col} llegó como número de Excel, no como texto ("${valor}") — puede haber perdido dígitos. ` +
+        `Vuelve a escribirlo en la celda como texto (formato de columna "Texto") y sube el archivo de nuevo.`
+      );
     }
 
     const icc = get("icc");

@@ -46,33 +46,94 @@ export interface ReportesActivaciones {
   entregas: FilaReporte[];
 }
 
+type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
+
+// Supabase/PostgREST corta en silencio cualquier consulta a 1000 filas (sin
+// ningún error). El historial de estados tiene muchas más, así que hay que
+// traerlo por páginas; si no, el reporte se queda con 1000 filas cualquiera
+// y los meses más recientes desaparecen. Se pide el total una vez y luego las
+// páginas en grupos pequeños, con orden fijo para que no se repitan ni se salten filas.
+async function traerTodo<T>(
+  construir: (desde: number, hasta: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>,
+  contar: () => PromiseLike<{ count: number | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const PAGINA = 1000;
+  const SIMULTANEAS = 5;
+  const { count, error: errorConteo } = await contar();
+  if (errorConteo) throw new Error(errorConteo.message);
+  const total = count ?? 0;
+  const paginas = Math.ceil(total / PAGINA);
+  const filas: T[] = [];
+  for (let i = 0; i < paginas; i += SIMULTANEAS) {
+    const grupo = await Promise.all(
+      Array.from({ length: Math.min(SIMULTANEAS, paginas - i) }, (_, k) => construir((i + k) * PAGINA, (i + k + 1) * PAGINA - 1))
+    );
+    for (const r of grupo) {
+      if (r.error) throw new Error(r.error.message);
+      filas.push(...((r.data ?? []) as T[]));
+    }
+  }
+  return filas;
+}
+
+// Día calendario en Colombia (UTC-5) de un instante: un cambio hecho a las
+// 8 p. m. del último día del mes cuenta en ese mes, no en el siguiente.
+function fechaColombia(iso: string): string {
+  return new Date(new Date(iso).getTime() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 export async function construirReportesActivaciones(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseServer,
   organizationId: string,
   proveedoresIncluidos: string[]
 ): Promise<ReportesActivaciones> {
-  const [{ data: historial }, { data: entregasRaw }] = await Promise.all([
-    supabase
-      .from("sim_status_history")
-      .select("changed_at, estado, sim_cards!inner(proveedor, organization_id)")
-      .eq("sim_cards.organization_id", organizationId)
-      .in("estado", ["Activa", "Desactivada", "Desactivada por cartera"]),
-    supabase
-      .from("sim_assignments")
-      .select("fecha_entrega, sim_cards!inner(proveedor, organization_id)")
-      .eq("sim_cards.organization_id", organizationId),
+  const ESTADOS = ["Activa", "Desactivada", "Desactivada por cartera"];
+
+  const [historial, entregasRaw] = await Promise.all([
+    traerTodo<{ changed_at: string; estado: string; sim_cards: SimCardMini }>(
+      (desde, hasta) =>
+        supabase
+          .from("sim_status_history")
+          .select("id, changed_at, estado, sim_cards!inner(proveedor, organization_id)")
+          .eq("sim_cards.organization_id", organizationId)
+          .in("estado", ESTADOS)
+          .order("changed_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(desde, hasta),
+      () =>
+        supabase
+          .from("sim_status_history")
+          .select("id, sim_cards!inner(organization_id)", { count: "exact", head: true })
+          .eq("sim_cards.organization_id", organizationId)
+          .in("estado", ESTADOS)
+    ),
+    traerTodo<{ fecha_entrega: string; sim_cards: SimCardMini }>(
+      (desde, hasta) =>
+        supabase
+          .from("sim_assignments")
+          .select("id, fecha_entrega, sim_cards!inner(proveedor, organization_id)")
+          .eq("sim_cards.organization_id", organizationId)
+          .order("fecha_entrega", { ascending: true })
+          .order("id", { ascending: true })
+          .range(desde, hasta),
+      () =>
+        supabase
+          .from("sim_assignments")
+          .select("id, sim_cards!inner(organization_id)", { count: "exact", head: true })
+          .eq("sim_cards.organization_id", organizationId)
+    ),
   ]);
 
   const filasActivacion: { fecha: string; proveedor: string }[] = [];
   const filasDesactivacion: { fecha: string; proveedor: string }[] = [];
 
-  for (const h of (historial ?? []) as unknown as { changed_at: string; estado: string; sim_cards: SimCardMini }[]) {
-    const item = { fecha: h.changed_at.slice(0, 10), proveedor: h.sim_cards?.proveedor ?? "—" };
+  for (const h of historial) {
+    const item = { fecha: fechaColombia(h.changed_at), proveedor: h.sim_cards?.proveedor ?? "—" };
     if (h.estado === "Activa") filasActivacion.push(item);
     else if (h.estado === "Desactivada" || h.estado === "Desactivada por cartera") filasDesactivacion.push(item);
   }
 
-  const filasEntregas = ((entregasRaw ?? []) as unknown as { fecha_entrega: string; sim_cards: SimCardMini }[]).map((e) => ({
+  const filasEntregas = entregasRaw.map((e) => ({
     fecha: e.fecha_entrega,
     proveedor: e.sim_cards?.proveedor ?? "—",
   }));
