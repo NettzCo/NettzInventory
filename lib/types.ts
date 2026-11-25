@@ -238,6 +238,20 @@ export interface HojaDeVidaEvento {
 
 export type EstadoPedido = "Pendiente" | "Enviado" | "Rechazado";
 
+export interface PedidoEnvio {
+  id: string;
+  organization_id: string;
+  pedido_id: string;
+  fecha_envio: string;
+  transportadora: string | null;
+  numero_guia: string | null;
+  valor_envio: number | null;
+  comprobante_url: string | null;
+  iccs: string[];
+  created_at: string;
+  created_by: string;
+}
+
 export interface Pedido {
   id: string;
   organization_id: string;
@@ -264,6 +278,7 @@ export interface Pedido {
   created_by: string;
   enviado_at: string | null;
   enviado_by: string | null;
+  envios?: PedidoEnvio[]; // se carga junto con el pedido (no es columna de la tabla)
 }
 
 export interface ChatGroup {

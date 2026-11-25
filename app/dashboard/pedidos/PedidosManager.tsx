@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Pedido } from "@/lib/types";
+import Link from "next/link";
+import { Pedido, PedidoEnvio, ESTADOS_SIM } from "@/lib/types";
 import { formatFechaHora, hoyColombia } from "@/lib/ui";
-import { crearPedido, editarPedido, eliminarPedido, marcarPedidoEnviado, rechazarPedido, subirComprobante, PedidoInput } from "./actions";
+import { crearPedido, editarPedido, eliminarPedido, registrarEnvio, actualizarEnvio, eliminarEnvio, rechazarPedido, subirComprobante, PedidoInput, EnvioInput, PlanClienteInput } from "./actions";
 import { traducirError } from "@/lib/friendlyError";
 
 interface Opcion {
@@ -50,6 +51,11 @@ function pedidoToInput(p: Pedido): PedidoInput {
 
 export default function PedidosManager({
   pedidos,
+  total,
+  pagina,
+  porPagina,
+  busqueda,
+  estadoFiltro,
   clientes,
   proveedores,
   apns,
@@ -59,6 +65,11 @@ export default function PedidosManager({
   organizationId,
 }: {
   pedidos: Pedido[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+  busqueda: string;
+  estadoFiltro: string;
   clientes: Opcion[];
   proveedores: Opcion[];
   apns: Opcion[];
@@ -67,34 +78,73 @@ export default function PedidosManager({
   esSuperAdmin: boolean;
   organizationId: string;
 }) {
-  const [filtro, setFiltro] = useState<"todos" | "pendientes" | "enviados" | "rechazados">("todos");
   const [lista, setLista] = useState(pedidos);
+  const [totalActual, setTotalActual] = useState(total);
 
-  // Refleja al instante (sin recargar) cuando alguien más marca un pedido
-  // como visto o como enviado — así el doble check se actualiza solo.
+  // Refleja al instante (sin recargar) los cambios de otras personas: pedidos
+  // nuevos, pedidos que cambian de estado o se marcan como vistos, y envíos
+  // (guías) que se agregan, editan o quitan.
   useEffect(() => {
     const supabase = createClient();
+    const sinFiltros = pagina === 1 && !busqueda;
     const canal = supabase
       .channel(`pedidos-lista-${organizationId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "pedidos", filter: `organization_id=eq.${organizationId}` },
+        (payload) => {
+          const nuevo = { ...(payload.new as Pedido), envios: [] };
+          if (!sinFiltros || (estadoFiltro && estadoFiltro !== nuevo.estado)) return;
+          setLista((prev) => (prev.some((p) => p.id === nuevo.id) ? prev : [nuevo, ...prev].slice(0, porPagina)));
+          setTotalActual((t) => t + 1);
+        }
+      )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "pedidos", filter: `organization_id=eq.${organizationId}` },
         (payload) => {
           const actualizado = payload.new as Pedido;
-          setLista((prev) => prev.map((p) => (p.id === actualizado.id ? actualizado : p)));
+          setLista((prev) => prev.map((p) => (p.id === actualizado.id ? { ...p, ...actualizado, envios: p.envios } : p)));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pedido_envios", filter: `organization_id=eq.${organizationId}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const id = (payload.old as { id?: string }).id;
+            if (!id) return;
+            setLista((prev) => prev.map((p) => ({ ...p, envios: (p.envios ?? []).filter((e) => e.id !== id) })));
+            return;
+          }
+          const envio = payload.new as PedidoEnvio;
+          setLista((prev) =>
+            prev.map((p) => {
+              if (p.id !== envio.pedido_id) return p;
+              const otros = (p.envios ?? []).filter((e) => e.id !== envio.id);
+              return { ...p, envios: [...otros, envio].sort((x, y) => x.fecha_envio.localeCompare(y.fecha_envio)) };
+            })
+          );
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(canal); };
-  }, [organizationId]);
+  }, [organizationId, pagina, busqueda, estadoFiltro, porPagina]);
 
-  const visibles = lista.filter((p) => {
-    if (filtro === "pendientes") return p.estado === "Pendiente";
-    if (filtro === "enviados") return p.estado === "Enviado";
-    if (filtro === "rechazados") return p.estado === "Rechazado";
-    return true;
-  });
+  const visibles = lista;
+  const totalPaginas = Math.max(1, Math.ceil(totalActual / porPagina));
+  const href = (cambios: { estado?: string; pagina?: number; q?: string }) => {
+    const params = new URLSearchParams();
+    const e = cambios.estado !== undefined ? cambios.estado : estadoFiltro;
+    const qActual = cambios.q !== undefined ? cambios.q : busqueda;
+    if (qActual) params.set("q", qActual);
+    if (e) params.set("estado", e);
+    const pg = cambios.pagina ?? (cambios.estado !== undefined ? 1 : pagina);
+    if (pg > 1) params.set("pagina", String(pg));
+    const qs = params.toString();
+    return `/dashboard/pedidos${qs ? `?${qs}` : ""}`;
+  };
 
   const nombreUsuario = new Map(usuarios.map((u) => [u.id, u.full_name ?? ""]));
 
@@ -137,22 +187,42 @@ export default function PedidosManager({
       <FormularioPedido clientes={clientes} proveedores={proveedores} apns={apns} usuarios={usuarios} onCreado={(p) => setLista((prev) => [p, ...prev])} />
 
       <section className="rounded-xl border bg-white overflow-x-auto" style={{ borderColor: "var(--border)" }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="font-display text-base font-semibold">Pedidos registrados</h2>
-          <div className="flex gap-2">
-            {(["todos", "pendientes", "enviados", "rechazados"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFiltro(f)}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium capitalize"
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+          <h2 className="font-display text-base font-semibold">Pedidos registrados ({totalActual})</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <form action="/dashboard/pedidos" method="get" className="flex gap-2">
+              {estadoFiltro && <input type="hidden" name="estado" value={estadoFiltro} />}
+              <input
+                type="search"
+                name="q"
+                defaultValue={busqueda}
+                placeholder="Cliente, ciudad, guía o ICC"
+                aria-label="Buscar pedidos"
+                className="input-filter"
+                style={{ width: "15rem" }}
+              />
+              <button type="submit" className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:underline cursor-pointer" style={{ borderColor: "var(--border)" }}>
+                Buscar
+              </button>
+              {busqueda && (
+                <Link href={href({ q: "", pagina: 1 })} className="rounded-lg px-3 py-1.5 text-sm hover:underline" style={{ color: "var(--text-secondary)" }}>
+                  Limpiar
+                </Link>
+              )}
+            </form>
+            {([["", "Todos"], ["Pendiente", "Pendientes"], ["Enviado", "Enviados"], ["Rechazado", "Rechazados"]] as const).map(([valor, etiqueta]) => (
+              <Link
+                key={valor || "todos"}
+                href={href({ estado: valor })}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium"
                 style={{
-                  background: filtro === f ? "var(--ink-900)" : "white",
-                  color: filtro === f ? "white" : "var(--text-primary)",
+                  background: estadoFiltro === valor ? "var(--ink-900)" : "white",
+                  color: estadoFiltro === valor ? "white" : "var(--text-primary)",
                   border: "1px solid var(--border)",
                 }}
               >
-                {f}
-              </button>
+                {etiqueta}
+              </Link>
             ))}
           </div>
         </div>
@@ -190,7 +260,16 @@ export default function PedidosManager({
         </table>
         {visibles.length === 0 && (
           <div className="p-8 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-            No hay pedidos {filtro !== "todos" ? filtro : "registrados todavía"}.
+            {busqueda || estadoFiltro ? "Ningún pedido coincide con la búsqueda o el filtro." : "No hay pedidos registrados todavía."}
+          </div>
+        )}
+        {totalPaginas > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t text-sm" style={{ borderColor: "var(--border)" }}>
+            <span style={{ color: "var(--text-secondary)" }}>Página {pagina} de {totalPaginas}</span>
+            <div className="flex gap-2">
+              {pagina > 1 && <Link href={href({ pagina: pagina - 1 })} className="rounded-lg border px-3 py-1.5 hover:underline" style={{ borderColor: "var(--border)" }}>Anterior</Link>}
+              {pagina < totalPaginas && <Link href={href({ pagina: pagina + 1 })} className="rounded-lg border px-3 py-1.5 hover:underline" style={{ borderColor: "var(--border)" }}>Siguiente</Link>}
+            </div>
           </div>
         )}
       </section>
@@ -297,35 +376,9 @@ function FormularioPedido({
       } else {
         setSuccess(true);
         setForm(CAMPOS_VACIOS);
-        // El servidor ya guardó el pedido; refrescamos la lista visualmente
-        // con un valor optimista mínimo — la próxima recarga trae el real.
-        onCreado({
-          id: crypto.randomUUID(),
-          organization_id: "",
-          cliente_id: form.cliente_id || null,
-          cliente_nombre: form.cliente_nombre,
-          cantidad: Number(form.cantidad),
-          proveedor: form.proveedor,
-          apn: form.apn || null,
-          pais: form.pais,
-          ciudad: form.ciudad,
-          direccion: form.direccion,
-          contacto_nombre: form.contacto_nombre,
-          contacto_telefono: form.contacto_telefono,
-          contacto_correo: form.contacto_correo || null,
-          asignado_a: form.asignado_a,
-          estado: "Pendiente",
-          observaciones: form.observaciones || null,
-          comprobante_url: null,
-          visto_at: null,
-          motivo_rechazo: null,
-          rechazado_at: null,
-          rechazado_by: null,
-          created_at: new Date().toISOString(),
-          created_by: "",
-          enviado_at: null,
-          enviado_by: null,
-        });
+        // Se usa el pedido real que devolvió el servidor (con su id verdadero),
+        // para poder marcarlo como enviado o editarlo sin recargar la página.
+        if (res.pedido) onCreado({ ...res.pedido, envios: [] });
       }
     });
   }
@@ -377,7 +430,8 @@ function FilaPedido({
   onEliminado: (id: string) => void;
 }) {
   const [editando, setEditando] = useState(false);
-  const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
+  // null = cerrado, "nuevo" = registrar una guía, o el envío que se está editando
+  const [formEnvio, setFormEnvio] = useState<null | "nuevo" | PedidoEnvio>(null);
   const [rechazando, setRechazando] = useState(false);
   const [form, setForm] = useState<PedidoInput>(pedidoToInput(pedido));
   const [isPending, startTransition] = useTransition();
@@ -412,6 +466,16 @@ function FilaPedido({
     });
   }
 
+  function quitarEnvio(envio: PedidoEnvio) {
+    if (!confirm(`¿Quitar la guía${envio.numero_guia ? ` ${envio.numero_guia}` : ""}? Esta acción no se puede deshacer.`)) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await eliminarEnvio(envio.id);
+      if (res?.error) setError(traducirError(res.error));
+      else onActualizado({ ...pedido, envios: (pedido.envios ?? []).filter((e) => e.id !== envio.id) });
+    });
+  }
+
   if (editando) {
     return (
       <tr className="border-b last:border-0 align-top" style={{ borderColor: "var(--border)" }}>
@@ -435,7 +499,7 @@ function FilaPedido({
 
   return (
     <>
-      <tr className="border-b last:border-0" style={{ borderColor: confirmandoEnvio ? "transparent" : "var(--border)" }}>
+      <tr className="border-b last:border-0" style={{ borderColor: formEnvio ? "transparent" : "var(--border)" }}>
         <td className="px-4 py-3 whitespace-nowrap">{formatFechaHora(pedido.created_at)}</td>
         <td className="px-4 py-3">{pedido.cliente_nombre}</td>
         <td className="px-4 py-3">{pedido.cantidad}</td>
@@ -479,7 +543,34 @@ function FilaPedido({
               &ldquo;{pedido.motivo_rechazo}&rdquo;
             </div>
           )}
-          {pedido.comprobante_url && (
+          {(pedido.envios ?? []).length > 0 && (
+            <ul className="mt-2 flex flex-col gap-2" style={{ maxWidth: "18rem" }}>
+              {(pedido.envios ?? []).map((envio) => (
+                <li key={envio.id} className="text-xs rounded-md border px-2 py-1.5" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
+                  <div className="font-medium" style={{ color: "var(--text-primary)" }}>
+                    {[envio.transportadora, envio.numero_guia && `Guía ${envio.numero_guia}`].filter(Boolean).join(" · ") || "Envío sin guía"}
+                  </div>
+                  <div>
+                    {formatFechaHora(envio.fecha_envio)}
+                    {envio.valor_envio !== null && ` · $${Number(envio.valor_envio).toLocaleString("es-CO")}`}
+                    {envio.iccs.length > 0 && ` · ${envio.iccs.length} SIM`}
+                  </div>
+                  <div className="flex gap-3 mt-0.5">
+                    {envio.comprobante_url && (
+                      <a href={envio.comprobante_url} target="_blank" rel="noreferrer" className="hover:underline">Ver guía</a>
+                    )}
+                    {puedeConfirmarEnvio && pedido.estado !== "Rechazado" && (
+                      <>
+                        <button onClick={() => setFormEnvio(envio)} disabled={isPending} className="hover:underline cursor-pointer">Editar</button>
+                        <button onClick={() => quitarEnvio(envio)} disabled={isPending} className="hover:underline cursor-pointer" style={{ color: "var(--state-desactivada)" }}>Quitar</button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {pedido.comprobante_url && (pedido.envios ?? []).length === 0 && (
             <a href={pedido.comprobante_url} target="_blank" rel="noreferrer" className="text-xs block mt-1" style={{ color: "var(--text-secondary)" }}>
               Ver comprobante
             </a>
@@ -487,9 +578,9 @@ function FilaPedido({
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
           <div className="flex flex-col gap-1 items-end">
-            {pedido.estado === "Pendiente" && puedeConfirmarEnvio && (
-              <button onClick={() => setConfirmandoEnvio((v) => !v)} disabled={isPending} className="text-sm font-medium hover:underline cursor-pointer" style={{ color: "var(--state-activa)" }}>
-                Marcar como enviado
+            {(pedido.estado === "Pendiente" || pedido.estado === "Enviado") && puedeConfirmarEnvio && (
+              <button onClick={() => setFormEnvio((v) => (v ? null : "nuevo"))} disabled={isPending} className="text-sm font-medium hover:underline cursor-pointer" style={{ color: "var(--state-activa)" }}>
+                {pedido.estado === "Pendiente" ? "Marcar como enviado" : "Agregar guía"}
               </button>
             )}
             {pedido.estado === "Pendiente" && puedeConfirmarEnvio && (
@@ -511,12 +602,13 @@ function FilaPedido({
           {error && <p className="text-xs mt-1" style={{ color: "var(--state-desactivada)" }}>{error}</p>}
         </td>
       </tr>
-      {confirmandoEnvio && (
-        <ConfirmarEnvioRow
-          pedidoId={pedido.id}
-          onCancelar={() => setConfirmandoEnvio(false)}
-          onConfirmado={(actualizado) => { onActualizado(actualizado); setConfirmandoEnvio(false); }}
-          pedidoBase={pedido}
+      {formEnvio && (
+        <EnvioFormRow
+          pedido={pedido}
+          comerciales={usuarios}
+          envio={formEnvio === "nuevo" ? null : formEnvio}
+          onCancelar={() => setFormEnvio(null)}
+          onGuardado={(actualizado) => { onActualizado(actualizado); setFormEnvio(null); }}
         />
       )}
       {rechazando && (
@@ -531,24 +623,50 @@ function FilaPedido({
   );
 }
 
-function ConfirmarEnvioRow({
-  pedidoId,
-  pedidoBase,
+function EnvioFormRow({
+  pedido,
+  comerciales,
+  envio,
   onCancelar,
-  onConfirmado,
+  onGuardado,
 }: {
-  pedidoId: string;
-  pedidoBase: Pedido;
+  pedido: Pedido;
+  comerciales: Opcion[];
+  envio: PedidoEnvio | null; // null = guía nueva
   onCancelar: () => void;
-  onConfirmado: (p: Pedido) => void;
+  onGuardado: (p: Pedido) => void;
 }) {
-  const [fecha, setFecha] = useState(() => hoyColombia());
+  const [form, setForm] = useState<EnvioInput>({
+    fecha_envio: envio ? envio.fecha_envio.slice(0, 10) : hoyColombia(),
+    transportadora: envio?.transportadora ?? "",
+    numero_guia: envio?.numero_guia ?? "",
+    valor_envio: envio?.valor_envio !== null && envio?.valor_envio !== undefined ? String(envio.valor_envio) : "",
+    iccs: envio ? envio.iccs.join("\n") : "",
+  });
+  const [plan, setPlan] = useState<PlanClienteInput>({
+    plan_unidad: "Gigas",
+    plan_cantidad: "",
+    tipo_plan: "Prepago",
+    duracion_meses: "12",
+    pago_momento: "Anticipado",
+    precio_cliente: "",
+    comercial_id: comerciales.some((u) => u.id === pedido.created_by) ? pedido.created_by : "",
+    estado_inicial: "Inactiva",
+  });
   const [archivo, setArchivo] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function confirmar() {
+  const iccsNuevos = form.iccs.split(/[\s,;]+/).filter(Boolean).filter((i) => !(envio?.iccs ?? []).includes(i)).length;
+  const cantidadIccs = form.iccs.split(/[\s,;]+/).filter(Boolean).length;
+  const yaDespachadas = (pedido.envios ?? []).filter((e) => e.id !== envio?.id).reduce((acc, e) => acc + e.iccs.length, 0);
+
+  function patch(p: Partial<EnvioInput>) {
+    setForm((prev) => ({ ...prev, ...p }));
+  }
+
+  function guardar() {
     setError(null);
     startTransition(async () => {
       let comprobanteUrl: string | null = null;
@@ -556,32 +674,133 @@ function ConfirmarEnvioRow({
       if (archivo) {
         const formData = new FormData();
         formData.append("file", archivo);
-        const subida = await subirComprobante(pedidoId, formData);
+        const subida = await subirComprobante(pedido.id, formData);
         if (subida.error) { setError(traducirError(subida.error)); return; }
         comprobanteUrl = subida.url ?? null;
       }
 
-      const res = await marcarPedidoEnviado(pedidoId, fecha, comprobanteUrl);
+      const datos: EnvioInput = { ...form, plan: iccsNuevos > 0 ? plan : undefined };
+      const res = envio ? await actualizarEnvio(envio.id, datos, comprobanteUrl) : await registrarEnvio(pedido.id, datos, comprobanteUrl);
       if (res?.error) { setError(traducirError(res.error)); return; }
+      if (!res.envio) return;
 
-      onConfirmado({ ...pedidoBase, estado: "Enviado", enviado_at: new Date(fecha).toISOString(), comprobante_url: comprobanteUrl });
+      const otros = (pedido.envios ?? []).filter((e) => e.id !== res.envio!.id);
+      const patchPedido = "pedidoPatch" in res && res.pedidoPatch ? res.pedidoPatch : {};
+      onGuardado({ ...pedido, ...patchPedido, envios: [...otros, res.envio] });
     });
   }
 
+  const labelStyle = { color: "var(--text-secondary)" };
   return (
     <tr className="border-b last:border-0" style={{ borderColor: "var(--border)" }}>
       <td colSpan={9} className="px-6 py-4" style={{ background: "var(--bg)" }}>
-        <div className="flex flex-wrap items-end gap-4">
+        <p className="text-sm font-medium mb-3">
+          {envio ? "Editar guía" : pedido.estado === "Pendiente" ? "Marcar como enviado" : "Agregar otra guía a este pedido"}
+        </p>
+        <div className="flex flex-wrap items-start gap-4">
           <div>
-            <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Fecha de envío</label>
-            <input type="date" className="input" style={{ width: "auto" }} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <label className="text-xs font-medium block mb-1" style={labelStyle}>Fecha de envío</label>
+            <input type="date" className="input" style={{ width: "auto" }} value={form.fecha_envio} onChange={(e) => patch({ fecha_envio: e.target.value })} />
           </div>
           <div>
-            <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Comprobante (opcional — imagen o PDF)</label>
+            <label className="text-xs font-medium block mb-1" style={labelStyle}>Transportadora</label>
+            <input className="input" style={{ width: "11rem" }} placeholder="Ej. Servientrega" value={form.transportadora} onChange={(e) => patch({ transportadora: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1" style={labelStyle}>Número de guía</label>
+            <input className="input" style={{ width: "11rem" }} value={form.numero_guia} onChange={(e) => patch({ numero_guia: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1" style={labelStyle}>Valor pagado (COP)</label>
+            <input className="input" style={{ width: "9rem" }} inputMode="numeric" placeholder="Ej. 15000" value={form.valor_envio} onChange={(e) => patch({ valor_envio: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1" style={labelStyle}>Guía o comprobante (opcional — imagen o PDF)</label>
             <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} className="text-sm" />
           </div>
-          <button onClick={confirmar} disabled={isPending} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 hover:underline cursor-pointer" style={{ background: "var(--state-activa)" }}>
-            {isPending ? "Guardando…" : "Confirmar envío"}
+        </div>
+        <div className="mt-3" style={{ maxWidth: "36rem" }}>
+          <label className="text-xs font-medium block mb-1" style={labelStyle}>
+            ICC de las SIM en este envío (opcional — uno por línea, o pega la lista)
+          </label>
+          <textarea className="input" rows={3} value={form.iccs} onChange={(e) => patch({ iccs: e.target.value })} />
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            {cantidadIccs} en este envío · {yaDespachadas + cantidadIccs} de {pedido.cantidad} pedidas
+            {yaDespachadas + cantidadIccs > pedido.cantidad && " — hay más SIM que las pedidas, revisa la lista"}
+          </p>
+          {envio && envio.iccs.length > 0 && (
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Las SIM que ya estaban en este envío quedaron asignadas al cliente y no se pueden quitar aquí; puedes agregar más.
+            </p>
+          )}
+        </div>
+        {iccsNuevos > 0 && (
+          <div className="mt-4 rounded-lg border p-4" style={{ borderColor: "var(--border)", maxWidth: "46rem" }}>
+            <p className="text-sm font-medium">Plan del cliente</p>
+            <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+              Las {iccsNuevos} SIM nuevas se crean en el inventario (proveedor {pedido.proveedor}) y quedan asignadas a {pedido.cliente_nombre} con este plan.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Cantidad del plan</label>
+                <div className="flex gap-2">
+                  <input className="input" style={{ width: "6rem" }} inputMode="decimal" value={plan.plan_cantidad} onChange={(e) => setPlan({ ...plan, plan_cantidad: e.target.value })} />
+                  <select className="input" style={{ width: "6.5rem" }} value={plan.plan_unidad} onChange={(e) => setPlan({ ...plan, plan_unidad: e.target.value })}>
+                    <option>Gigas</option>
+                    <option>Megas</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Tipo de plan</label>
+                <select className="input" style={{ width: "8rem" }} value={plan.tipo_plan} onChange={(e) => setPlan({ ...plan, tipo_plan: e.target.value })}>
+                  <option>Prepago</option>
+                  <option>Postpago</option>
+                </select>
+              </div>
+              {plan.tipo_plan === "Prepago" && (
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={labelStyle}>Duración</label>
+                  <select className="input" style={{ width: "8rem" }} value={plan.duracion_meses} onChange={(e) => setPlan({ ...plan, duracion_meses: e.target.value })}>
+                    <option value="6">6 meses</option>
+                    <option value="12">12 meses</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Pago</label>
+                <select className="input" style={{ width: "9rem" }} value={plan.pago_momento} onChange={(e) => setPlan({ ...plan, pago_momento: e.target.value })}>
+                  <option>Anticipado</option>
+                  <option>Mes vencido</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Precio por SIM (COP)</label>
+                <input className="input" style={{ width: "9rem" }} inputMode="numeric" value={plan.precio_cliente} onChange={(e) => setPlan({ ...plan, precio_cliente: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Comercial</label>
+                <select className="input" style={{ width: "12rem" }} value={plan.comercial_id} onChange={(e) => setPlan({ ...plan, comercial_id: e.target.value })}>
+                  <option value="">Selecciona…</option>
+                  {comerciales.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name ?? u.name ?? u.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={labelStyle}>Estado inicial</label>
+                <select className="input" style={{ width: "11rem" }} value={plan.estado_inicial} onChange={(e) => setPlan({ ...plan, estado_inicial: e.target.value })}>
+                  {ESTADOS_SIM.map((e) => (
+                    <option key={e}>{e}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3 mt-3">
+          <button onClick={guardar} disabled={isPending} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 hover:underline cursor-pointer" style={{ background: "var(--state-activa)" }}>
+            {isPending ? "Guardando…" : envio ? "Guardar guía" : pedido.estado === "Pendiente" ? "Confirmar envío" : "Agregar guía"}
           </button>
           <button onClick={onCancelar} disabled={isPending} className="rounded-lg border px-4 py-2 text-sm font-medium hover:underline cursor-pointer" style={{ borderColor: "var(--border)" }}>
             Cancelar

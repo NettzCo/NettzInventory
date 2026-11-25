@@ -96,22 +96,35 @@ export async function marcarChatLeido(conversation: string) {
 }
 
 // ---------------------------------------------------------
-// GRUPOS — solo el super administrador de la organización
+// GRUPOS — cualquier usuario con acceso a Chat puede crear grupos y
+// administrar los que creó (nombre y miembros). El super administrador
+// administra todos. Los demás miembros solo escriben y leen.
 // ---------------------------------------------------------
-async function requireSuperAdminChat() {
-  const { profile } = await getCurrentProfile();
-  if (!profile.role_es_sistema) {
-    throw new Error("Solo un super administrador puede administrar grupos de chat.");
+async function requireAdminDelGrupo(grupoId: string) {
+  const { userId, profile } = await getCurrentProfile();
+  if (!tieneModulo(profile, "chat")) throw new Error("No tienes acceso al módulo de Chat.");
+  const supabase = await createClient();
+  const { data: grupo } = await supabase
+    .from("chat_groups")
+    .select("id, name, created_by")
+    .eq("id", grupoId)
+    .eq("organization_id", profile.organization_id)
+    .maybeSingle();
+  if (!grupo) throw new Error("No se encontró el grupo.");
+  if (grupo.created_by !== userId && !profile.role_es_sistema) {
+    throw new Error("Solo quien creó el grupo o un super administrador puede administrarlo.");
   }
-  return profile;
+  return { userId, profile, supabase, grupo };
 }
 
 export async function crearGrupo(nombre: string, miembros: string[]) {
   try {
     const { userId, profile } = await getCurrentProfile();
-    if (!profile.role_es_sistema) return { error: "Solo un super administrador puede crear grupos." };
+    if (!tieneModulo(profile, "chat")) return { error: "No tienes acceso al módulo de Chat." };
     if (!nombre.trim()) return { error: "Ponle un nombre al grupo." };
-    if (miembros.length === 0) return { error: "Selecciona al menos una persona para el grupo." };
+    // Quien crea el grupo siempre queda dentro, para poder verlo y administrarlo.
+    const ids = Array.from(new Set([...miembros, userId]));
+    if (ids.length < 2) return { error: "Selecciona al menos una persona más para el grupo." };
 
     const supabase = await createClient();
     const { data: grupo, error } = await supabase
@@ -124,7 +137,7 @@ export async function crearGrupo(nombre: string, miembros: string[]) {
 
     const { error: errorMiembros } = await supabase
       .from("chat_group_members")
-      .insert(miembros.map((uid) => ({ group_id: grupo.id, user_id: uid })));
+      .insert(ids.map((uid) => ({ group_id: grupo.id, user_id: uid })));
 
     if (errorMiembros) return { error: errorMiembros.message };
 
@@ -137,19 +150,40 @@ export async function crearGrupo(nombre: string, miembros: string[]) {
 
 export async function editarGrupo(id: string, nombre: string, miembros: string[]) {
   try {
-    await requireSuperAdminChat();
+    const { profile, supabase, grupo } = await requireAdminDelGrupo(id);
     if (!nombre.trim()) return { error: "Ponle un nombre al grupo." };
-    if (miembros.length === 0) return { error: "Selecciona al menos una persona para el grupo." };
 
-    const supabase = await createClient();
-    const { error } = await supabase.from("chat_groups").update({ name: nombre.trim() }).eq("id", id);
-    if (error) return { error: error.message };
+    // El creador del grupo no se puede quitar a sí mismo ni lo puede quitar
+    // otra persona que no sea super administrador.
+    const deseados = new Set<string>(miembros);
+    if (!profile.role_es_sistema) deseados.add(grupo.created_by);
+    if (deseados.size === 0) return { error: "Selecciona al menos una persona para el grupo." };
 
-    await supabase.from("chat_group_members").delete().eq("group_id", id);
-    const { error: errorMiembros } = await supabase
+    const { data: actuales, error: errorLectura } = await supabase
       .from("chat_group_members")
-      .insert(miembros.map((uid) => ({ group_id: id, user_id: uid })));
-    if (errorMiembros) return { error: errorMiembros.message };
+      .select("user_id")
+      .eq("group_id", id);
+    if (errorLectura) return { error: errorLectura.message };
+
+    const actualesIds = new Set<string>((actuales ?? []).map((m) => m.user_id as string));
+    const aAgregar = [...deseados].filter((u) => !actualesIds.has(u));
+    const aQuitar = [...actualesIds].filter((u) => !deseados.has(u));
+
+    if (nombre.trim() !== grupo.name) {
+      const { error } = await supabase.from("chat_groups").update({ name: nombre.trim() }).eq("id", id);
+      if (error) return { error: error.message };
+    }
+
+    // Se agrega primero y se quita después, y solo lo que cambia: así un
+    // fallo a medias nunca deja el grupo vacío ni borra miembros de más.
+    if (aAgregar.length > 0) {
+      const { error } = await supabase.from("chat_group_members").insert(aAgregar.map((uid) => ({ group_id: id, user_id: uid })));
+      if (error) return { error: error.message };
+    }
+    if (aQuitar.length > 0) {
+      const { error } = await supabase.from("chat_group_members").delete().eq("group_id", id).in("user_id", aQuitar);
+      if (error) return { error: error.message };
+    }
 
     revalidatePath("/dashboard/chat");
     return { ok: true };
@@ -160,8 +194,7 @@ export async function editarGrupo(id: string, nombre: string, miembros: string[]
 
 export async function eliminarGrupo(id: string) {
   try {
-    await requireSuperAdminChat();
-    const supabase = await createClient();
+    const { supabase } = await requireAdminDelGrupo(id);
     const { error } = await supabase.from("chat_groups").delete().eq("id", id);
     if (error) return { error: error.message };
 

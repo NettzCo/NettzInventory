@@ -1,0 +1,288 @@
+// Los roles ahora son administrables (tabla "roles"), no un enum fijo.
+export type Role = string;
+
+export interface RoleRow {
+  id: string;
+  name: string;
+  is_system: boolean;
+  can_manage_organizations: boolean;
+  default_modulos: string[];
+  created_at: string;
+}
+
+export type EstadoSim =
+  | "Inactiva"
+  | "Lista para activar"
+  | "Activa"
+  | "Sin número corto"
+  | "Desactivada temporal"
+  | "Desactivada"
+  | "Desactivada por cartera"
+  | "Vencida";
+
+export const ESTADOS_SIM: EstadoSim[] = [
+  "Inactiva",
+  "Lista para activar",
+  "Activa",
+  "Sin número corto",
+  "Desactivada temporal",
+  "Desactivada",
+  "Desactivada por cartera",
+  "Vencida",
+];
+
+export type PlanUnidad = "Megas" | "Gigas";
+export type TipoPlan = "Prepago" | "Postpago";
+export type PagoMomento = "Anticipado" | "Mes vencido";
+
+export const PLAN_UNIDADES: PlanUnidad[] = ["Megas", "Gigas"];
+export const TIPOS_PLAN: TipoPlan[] = ["Prepago", "Postpago"];
+export const PAGOS_MOMENTO: PagoMomento[] = ["Anticipado", "Mes vencido"];
+
+export interface Organization {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  color_ink: string;
+  color_accent: string;
+  created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  organization_id: string;
+  role_id: string;
+  role_nombre: string;
+  role_es_sistema: boolean;
+  puede_gestionar_organizaciones: boolean;
+  org_nombre: string;
+  org_logo_url: string | null;
+  org_color_ink: string;
+  org_color_accent: string;
+  modulos: string[];
+  active: boolean;
+  created_at: string;
+}
+
+export const INDUSTRIAS = [
+  "GPS",
+  "SEGURIDAD",
+  "INTEGRADOR",
+  "DISTRIBUIDOR",
+  "PAGOS E",
+  "UTILITIES",
+  "ENERGIA",
+  "OTRA INDUSTRIA",
+] as const;
+export type Industria = (typeof INDUSTRIAS)[number];
+
+export interface Cliente {
+  id: string;
+  organization_id: string;
+  codigo: number;
+  nombre: string;
+  contacto_responsable: string | null;
+  documento: string | null;
+  telefono: string | null;
+  correo: string | null;
+  direccion: string | null;
+  industria: Industria | null;
+  fecha_vinculacion: string | null;
+  observaciones: string | null;
+  active: boolean;
+  // Solo tiene valor cuando active=false Y la desactivación vino del panel
+  // "Desactivar cliente" (no de apagar el interruptor Activo/Inactivo a
+  // mano) — dice el motivo, para distinguir "Desactivado por cartera" de
+  // una desactivación total/normal en la lista de clientes.
+  motivo_desactivacion: "total" | "cartera" | null;
+  created_at: string;
+  created_by: string;
+  kam_id: string | null;
+  broker: string | null; // texto libre, no un usuario del sistema
+  kam_nombre?: string | null; // resuelto al consultar, uniendo con profiles
+}
+
+export interface Provider {
+  id: string;
+  name: string;
+  active: boolean;
+  integration_slug: string | null;
+  api_enabled: boolean;
+  api_base_url: string | null;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  last_sync_message: string | null;
+  created_at: string;
+}
+
+export interface Apn {
+  id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface SimCard {
+  id: string;
+  organization_id: string;
+  icc: string;
+  proveedor: string;
+  apn: string | null;
+  observaciones: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+// Corresponde a la vista sim_short_number_status_view — dice, por cada
+// número corto que alguna vez existió, a qué SIM pertenece hoy (si a
+// alguna) o si quedó disponible para reasignar.
+export interface SimShortNumberStatus {
+  organization_id: string;
+  numero_corto: string;
+  sim_id_actual: string | null;
+  icc_actual: string | null;
+  estado_actual: EstadoSim | null;
+  cliente_actual: string | null;
+  proveedor: string | null;
+  disponible: boolean;
+}
+
+export interface SimShortNumber {
+  id: string;
+  sim_id: string;
+  numero_corto: string;
+  assigned_at: string;
+  unassigned_at: string | null;
+  assigned_by: string;
+}
+
+export interface SimStatusHistory {
+  id: string;
+  sim_id: string;
+  estado: EstadoSim;
+  estado_anterior: EstadoSim | null;
+  bulk_operation_id: string | null;
+  changed_at: string;
+  changed_by: string;
+  nota: string | null;
+}
+
+export interface BulkOperation {
+  id: string;
+  organization_id: string;
+  tipo: "cambio_estado" | "registro_entrega" | "reasignacion_numero";
+  estado_nuevo: EstadoSim | null;
+  cantidad_sims: number;
+  nota: string | null;
+  created_by: string;
+  created_at: string;
+  revertida_at: string | null;
+  revertida_by: string | null;
+}
+
+export interface SimAssignment {
+  id: string;
+  sim_id: string;
+  cliente_nombre: string;
+  plan_unidad: PlanUnidad;
+  plan_cantidad: number;
+  tipo_plan: TipoPlan;
+  pago_momento: PagoMomento;
+  duracion_meses: number | null; // solo aplica si tipo_plan === "Prepago"
+  precio_cliente: number;
+  comercial_id: string;
+  broker_id: string | null;
+  fecha_entrega: string;
+  bulk_operation_id: string | null;
+  ended_by_bulk_operation_id: string | null;
+  assigned_at: string;
+  ended_at: string | null;
+  created_by: string;
+}
+
+export interface SimCurrentView {
+  id: string;
+  icc: string;
+  proveedor: string;
+  apn: string | null;
+  observaciones: string | null;
+  created_at: string;
+  numero_corto_actual: string | null;
+  numero_corto_desde: string | null;
+  estado_actual: EstadoSim | null;
+  estado_desde: string | null;
+  cliente_actual: string | null;
+  plan_unidad: PlanUnidad | null;
+  plan_cantidad: number | null;
+  tipo_plan: TipoPlan | null;
+  pago_momento: PagoMomento | null;
+  duracion_meses: number | null;
+  precio_cliente: number | null;
+  comercial_id: string | null;
+  comercial_nombre: string | null;
+  broker_id: string | null;
+  broker_nombre: string | null;
+  fecha_entrega: string | null;
+  cliente_desde: string | null;
+}
+
+// Un evento genérico para pintar la "hoja de vida" en orden cronológico
+export interface HojaDeVidaEvento {
+  tipo: "creacion" | "estado" | "numero_corto" | "asignacion";
+  fecha: string;
+  titulo: string;
+  detalle: string;
+  usuario_nombre: string;
+}
+
+export type EstadoPedido = "Pendiente" | "Enviado" | "Rechazado";
+
+export interface Pedido {
+  id: string;
+  organization_id: string;
+  cliente_id: string | null;
+  cliente_nombre: string;
+  cantidad: number;
+  proveedor: string;
+  apn: string | null;
+  pais: string;
+  ciudad: string;
+  direccion: string;
+  contacto_nombre: string;
+  contacto_telefono: string;
+  contacto_correo: string | null;
+  asignado_a: string;
+  estado: EstadoPedido;
+  observaciones: string | null;
+  comprobante_url: string | null;
+  visto_at: string | null;
+  motivo_rechazo: string | null;
+  rechazado_at: string | null;
+  rechazado_by: string | null;
+  created_at: string;
+  created_by: string;
+  enviado_at: string | null;
+  enviado_by: string | null;
+}
+
+export interface ChatGroup {
+  id: string;
+  organization_id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  organization_id: string;
+  sender_id: string;
+  recipient_id: string | null; // null = canal general (o grupo, ver group_id)
+  group_id: string | null;
+  body: string;
+  attachment_url: string | null;
+  attachment_name: string | null;
+  attachment_type: "image" | "file" | null;
+  created_at: string;
+}

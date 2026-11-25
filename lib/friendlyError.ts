@@ -57,6 +57,12 @@ export function traducirError(mensajeCrudo: string | null | undefined): string {
   if (m.includes("econnrefused") || m.includes("could not connect")) {
     return "No se pudo conectar con el servicio. Intenta de nuevo en un momento.";
   }
+  if (m.includes("bucket not found")) {
+    return "No existe la carpeta de almacenamiento de comprobantes en Supabase (bucket \"pedidos-comprobantes\"). Hay que crearla con la migración SQL del módulo de pedidos.";
+  }
+  if (m.includes("row-level security") && m.includes("storage")) {
+    return "No tienes permiso para subir archivos a esta carpeta de comprobantes.";
+  }
   if (m.includes("payload too large") || m.includes("body exceeded")) {
     return "El archivo es demasiado grande. Intenta con un archivo más chico o divídelo en partes.";
   }

@@ -25,22 +25,22 @@ export default async function ChatPage({
   // El super administrador ve y administra TODOS los grupos de la
   // organización; cualquier otro usuario solo ve los grupos a los que
   // pertenece (para poder chatear ahí).
-  let grupos: { id: string; name: string }[] = [];
+  let grupos: { id: string; name: string; created_by: string }[] = [];
   if (profile.role_es_sistema) {
     const { data } = await supabase
       .from("chat_groups")
-      .select("id, name")
+      .select("id, name, created_by")
       .eq("organization_id", profile.organization_id)
       .order("name");
     grupos = data ?? [];
   } else {
     const { data } = await supabase
       .from("chat_group_members")
-      .select("group_id, chat_groups(id, name)")
+      .select("group_id, chat_groups(id, name, created_by)")
       .eq("user_id", userId);
     grupos = (data ?? [])
-      .map((r) => r.chat_groups as unknown as { id: string; name: string } | null)
-      .filter((g): g is { id: string; name: string } => g !== null);
+      .map((r) => r.chat_groups as unknown as { id: string; name: string; created_by: string } | null)
+      .filter((g): g is { id: string; name: string; created_by: string } => g !== null);
   }
 
   // Quiénes son miembros de cada grupo — el super administrador lo usa

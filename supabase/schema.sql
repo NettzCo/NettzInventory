@@ -428,15 +428,19 @@ alter table chat_group_members enable row level security;
 
 create policy "read groups same org" on chat_groups for select
   using (organization_id = current_org_id());
-create policy "manage groups super admin" on chat_groups for all
-  using (organization_id = current_org_id() and current_role_is_system())
-  with check (organization_id = current_org_id() and current_role_is_system());
+create policy "insert groups creator" on chat_groups for insert
+  with check (organization_id = current_org_id() and created_by = auth.uid() and tiene_modulo('chat'));
+create policy "update groups creator or admin" on chat_groups for update
+  using (organization_id = current_org_id() and (created_by = auth.uid() or current_role_is_system()))
+  with check (organization_id = current_org_id() and (created_by = auth.uid() or current_role_is_system()));
+create policy "delete groups creator or admin" on chat_groups for delete
+  using (organization_id = current_org_id() and (created_by = auth.uid() or current_role_is_system()));
 
 create policy "read group members" on chat_group_members for select
   using (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id()));
-create policy "manage group members super admin" on chat_group_members for all
-  using (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and current_role_is_system()))
-  with check (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and current_role_is_system()));
+create policy "manage group members creator or admin" on chat_group_members for all
+  using (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and (g.created_by = auth.uid() or current_role_is_system())))
+  with check (exists (select 1 from chat_groups g where g.id = group_id and g.organization_id = current_org_id() and (g.created_by = auth.uid() or current_role_is_system())));
 
 do $$
 begin
@@ -1236,3 +1240,34 @@ select id, p.name
 from organizations, (values ('Claro'), ('Claro Gigas'), ('Moabits'), ('Wireless Logic'), ('Tele2'), ('Movistar'), ('Top Connect'), ('Things Data')) as p(name)
 where organizations.name = 'Nettz'
 on conflict (organization_id, name) do nothing;
+
+-- Pedidos: envíos (varias guías por pedido, valor pagado e ICC despachados) — 2026-11-24
+create table if not exists pedido_envios (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  pedido_id uuid not null references pedidos(id) on delete cascade,
+  fecha_envio timestamptz not null default now(),
+  transportadora text,
+  numero_guia text,
+  valor_envio numeric check (valor_envio is null or valor_envio >= 0),
+  comprobante_url text,
+  iccs text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  created_by uuid not null references profiles(id)
+);
+create index if not exists idx_pedido_envios_pedido on pedido_envios (pedido_id);
+create index if not exists idx_pedido_envios_org on pedido_envios (organization_id, fecha_envio);
+create index if not exists idx_pedido_envios_iccs on pedido_envios using gin (iccs);
+alter table pedido_envios enable row level security;
+create policy "read pedido_envios" on pedido_envios for select using (organization_id = current_org_id());
+create policy "insert pedido_envios" on pedido_envios for insert with check (organization_id = current_org_id() and tiene_modulo('pedidos'));
+create policy "update pedido_envios" on pedido_envios for update
+  using (organization_id = current_org_id() and tiene_modulo('pedidos'))
+  with check (organization_id = current_org_id() and tiene_modulo('pedidos'));
+create policy "delete pedido_envios" on pedido_envios for delete using (organization_id = current_org_id() and tiene_modulo('pedidos'));
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'pedido_envios') then
+    alter publication supabase_realtime add table pedido_envios;
+  end if;
+end $$;

@@ -16,6 +16,7 @@ interface Contacto {
 interface Grupo {
   id: string;
   name: string;
+  created_by: string;
 }
 
 function tokenDeNombre(nombre: string): string {
@@ -461,7 +462,7 @@ export default function ChatWindow({
 
             <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
               <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Grupos</span>
-              {esSuperAdmin && (
+              {(
                 <button onClick={() => setGestionAbierta("nuevo")} className="text-xs font-medium hover:underline cursor-pointer" style={{ color: "var(--chip-gold)" }}>
                   + Nuevo
                 </button>
@@ -484,7 +485,7 @@ export default function ChatWindow({
                   <span className="flex-1"># {g.name}</span>
                   <BadgeNoLeidos cantidad={noLeidos.get(`${GRUPO_PREFIJO}${g.id}`) ?? 0} />
                 </button>
-                {esSuperAdmin ? (
+                {esSuperAdmin || g.created_by === currentUserId ? (
                   <button onClick={() => setGestionAbierta(g.id)} className="px-2 text-xs hover:underline cursor-pointer" style={{ color: "var(--text-muted)" }}>
                     Editar
                   </button>
@@ -792,7 +793,7 @@ function GestionGrupo({
     <div className="flex-1 flex flex-col min-w-0 p-6 overflow-y-auto">
       <h2 className="font-display text-lg font-semibold mb-1">{grupoId ? "Editar grupo" : "Nuevo grupo"}</h2>
       <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
-        Ponle un nombre y elige quiénes pertenecen a este grupo.
+        Ponle un nombre y elige quiénes pertenecen a este grupo. Tú administras los grupos que creas.
       </p>
 
       <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-secondary)" }}>Nombre del grupo</label>
