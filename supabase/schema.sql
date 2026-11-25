@@ -528,6 +528,9 @@ create policy "write own sim alert reads" on sim_alert_reads for insert
 drop policy if exists "delete own sim alert reads" on sim_alert_reads;
 create policy "delete own sim alert reads" on sim_alert_reads for delete
   using (user_id = auth.uid());
+drop policy if exists "update own sim alert reads" on sim_alert_reads;
+create policy "update own sim alert reads" on sim_alert_reads for update
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ---------------------------------------------------------
 -- PAGOS ADELANTADOS

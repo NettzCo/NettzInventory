@@ -12,6 +12,7 @@ import { traducirError } from "@/lib/friendlyError";
 export default function AlertasVencimientoTable({ alertas }: { alertas: AlertaVencimiento[] }) {
   const [vistasLocal, setVistasLocal] = useState<Set<string>>(new Set());
   const yaMarcado = useRef(false);
+  const router = useRouter();
 
   // Con solo entrar a esta pantalla, todo lo que se está mostrando queda
   // marcado como visto — no hace falta ningún clic. Se dispara una sola vez
@@ -24,7 +25,14 @@ export default function AlertasVencimientoTable({ alertas }: { alertas: AlertaVe
     if (pendientesAlEntrar.length === 0) return;
 
     setVistasLocal(new Set(pendientesAlEntrar.map((a) => a.sim.id + a.fechaAniversario)));
-    void marcarAlertasVistas(pendientesAlEntrar.map((a) => ({ simId: a.sim.id, fechaAniversario: a.fechaAniversario })));
+    void marcarAlertasVistas(pendientesAlEntrar.map((a) => ({ simId: a.sim.id, fechaAniversario: a.fechaAniversario }))).then((r) => {
+      if (r && "error" in r && r.error) {
+        console.error("No se pudieron marcar las alertas como vistas:", r.error);
+        yaMarcado.current = false;
+        return;
+      }
+      router.refresh();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

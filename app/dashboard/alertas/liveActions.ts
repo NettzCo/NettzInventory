@@ -56,10 +56,16 @@ export async function marcarAlertasVistas(items: { simId: string; fechaAniversar
   }));
   if (filas.length === 0) return { ok: true };
 
-  const { error } = await supabase.from("sim_alert_reads").upsert(filas, { onConflict: "sim_id,user_id,fecha_aniversario" });
-  if (error) return { error: error.message };
+  // En lotes y con "ignorar duplicados": las ya marcadas no se vuelven a
+  // escribir (no requiere permiso de UPDATE) y un lote grande no falla.
+  const LOTE = 200;
+  for (let i = 0; i < filas.length; i += LOTE) {
+    const { error } = await supabase
+      .from("sim_alert_reads")
+      .upsert(filas.slice(i, i + LOTE), { onConflict: "sim_id,user_id,fecha_aniversario", ignoreDuplicates: true });
+    if (error) return { error: error.message };
+  }
 
-  revalidatePath("/dashboard/alertas");
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }
